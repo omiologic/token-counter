@@ -2,6 +2,34 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+const ENCODINGS = [
+  "cl100k_base",
+  "gpt2",
+  "o200k_base",
+  "p50k_base",
+  "p50k_edit",
+  "r50k_base",
+];
+const API_BASELINE = JSON.parse(
+  await readFile(
+    new URL("./fixtures/public-api-baseline.json", import.meta.url),
+    "utf8",
+  ),
+);
+
+function normalizeDeclaration(contents) {
+  return contents
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/\/\/#[^\n]*/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function declarationPaths(path) {
+  if (!path.includes("<encoding>")) return [path];
+  return ENCODINGS.map((encoding) => path.replace("<encoding>", encoding));
+}
+
 test("public exports and declarations contain no token material", async () => {
   const publicApi = await import("../dist/index.js");
   const declaration = await readFile(
@@ -22,6 +50,53 @@ test("public exports and declarations contain no token material", async () => {
   assert.equal(adapterDeclaration.includes('from "js-tiktoken"'), false);
   assert.equal(declaration.includes("number[]"), false);
   assert.equal(adapterDeclaration.includes("number[]"), false);
+});
+
+test("public declaration closure matches the compatibility baseline", async () => {
+  const declarationPathsFromExports = Object.values(API_BASELINE.public_subpaths)
+    .map(({ types }) => types);
+  const declarationPathsFromContracts = Object.keys(
+    API_BASELINE.declaration_fragments,
+  ).flatMap(declarationPaths);
+  const paths = [
+    ...new Set([
+      ...declarationPathsFromExports,
+      ...declarationPathsFromContracts,
+    ]),
+  ];
+  const declarations = new Map();
+
+  for (const path of paths) {
+    const contents = await readFile(
+      new URL(`..${path.slice(1)}`, import.meta.url),
+      "utf8",
+    );
+    const normalized = normalizeDeclaration(contents);
+    declarations.set(path, normalized);
+    for (const forbidden of API_BASELINE.forbidden_declaration_fragments) {
+      assert.equal(
+        normalized.includes(forbidden),
+        false,
+        `${path}: ${forbidden}`,
+      );
+    }
+  }
+
+  for (const [template, fragments] of Object.entries(
+    API_BASELINE.declaration_fragments,
+  )) {
+    for (const path of declarationPaths(template)) {
+      const declaration = declarations.get(path);
+      assert.ok(declaration, path);
+      for (const fragment of fragments) {
+        assert.equal(
+          declaration.includes(fragment),
+          true,
+          `${path}: ${fragment}`,
+        );
+      }
+    }
+  }
 });
 
 test("results, errors, and console output remain content-safe", async () => {

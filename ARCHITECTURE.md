@@ -456,3 +456,9 @@ Changes to this package should preserve these invariants:
 8. Provider actual usage is never redefined as local tokenizer truth.
 
 If a proposed feature violates these rules, it likely belongs in a consuming context-observability, security, provider, or orchestration layer instead.
+
+The public compatibility boundary is enumerated in the
+[public API baseline](./test/fixtures/public-api-baseline.json) and classified
+under the semver guidance in [README.md](./README.md#compatibility-and-semver-baseline).
+Generated bundle layout, worker protocol internals, and performance evidence do
+not become architecture contracts merely because tests inspect them.

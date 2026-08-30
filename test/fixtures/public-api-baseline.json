@@ -1,0 +1,235 @@
+{
+  "schema_version": 1,
+  "package": "@omiologic/token-counter",
+  "runtime": {
+    "package_type": "module",
+    "target": "ES2022",
+    "node": ">=18"
+  },
+  "public_subpaths": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "module": "./dist/index.js",
+      "value_exports": [
+        "JsTiktokenCounter",
+        "createTokenCounter",
+        "resolveTokenEncoding"
+      ],
+      "type_only_exports": [
+        "AsyncTokenCounter",
+        "BrowserWorkerTokenCounter",
+        "TokenCounter",
+        "TokenCounterDescriptor",
+        "TokenEncoding"
+      ]
+    },
+    "./core": {
+      "types": "./dist/core.d.ts",
+      "module": "./dist/core.js",
+      "value_exports": [
+        "resolveTokenEncoding"
+      ],
+      "type_only_exports": [
+        "AsyncTokenCounter",
+        "BrowserWorkerTokenCounter",
+        "TokenCounter",
+        "TokenCounterDescriptor",
+        "TokenEncoding"
+      ]
+    },
+    "./js": {
+      "types": "./dist/js.d.ts",
+      "module": "./dist/js.js",
+      "value_exports": [
+        "JsTiktokenCounter"
+      ],
+      "type_only_exports": []
+    },
+    "./encodings/cl100k_base": {
+      "types": "./dist/encodings/cl100k_base.d.ts",
+      "module": "./dist/encodings/cl100k_base.js",
+      "value_exports": [
+        "createTokenCounter"
+      ],
+      "type_only_exports": []
+    },
+    "./encodings/gpt2": {
+      "types": "./dist/encodings/gpt2.d.ts",
+      "module": "./dist/encodings/gpt2.js",
+      "value_exports": [
+        "createTokenCounter"
+      ],
+      "type_only_exports": []
+    },
+    "./encodings/o200k_base": {
+      "types": "./dist/encodings/o200k_base.d.ts",
+      "module": "./dist/encodings/o200k_base.js",
+      "value_exports": [
+        "createTokenCounter"
+      ],
+      "type_only_exports": []
+    },
+    "./encodings/p50k_base": {
+      "types": "./dist/encodings/p50k_base.d.ts",
+      "module": "./dist/encodings/p50k_base.js",
+      "value_exports": [
+        "createTokenCounter"
+      ],
+      "type_only_exports": []
+    },
+    "./encodings/p50k_edit": {
+      "types": "./dist/encodings/p50k_edit.d.ts",
+      "module": "./dist/encodings/p50k_edit.js",
+      "value_exports": [
+        "createTokenCounter"
+      ],
+      "type_only_exports": []
+    },
+    "./encodings/r50k_base": {
+      "types": "./dist/encodings/r50k_base.d.ts",
+      "module": "./dist/encodings/r50k_base.js",
+      "value_exports": [
+        "createTokenCounter"
+      ],
+      "type_only_exports": []
+    },
+    "./workers/cl100k_base": {
+      "types": "./dist/workers/cl100k_base.d.ts",
+      "module": "./dist/workers/cl100k_base.js",
+      "worker_asset": "./dist/workers/cl100k_base.worker.js",
+      "value_exports": [
+        "createTokenCounter"
+      ],
+      "type_only_exports": [
+        "AsyncTokenCounter",
+        "BrowserWorkerTokenCounter"
+      ]
+    },
+    "./workers/gpt2": {
+      "types": "./dist/workers/gpt2.d.ts",
+      "module": "./dist/workers/gpt2.js",
+      "worker_asset": "./dist/workers/gpt2.worker.js",
+      "value_exports": [
+        "createTokenCounter"
+      ],
+      "type_only_exports": [
+        "AsyncTokenCounter",
+        "BrowserWorkerTokenCounter"
+      ]
+    },
+    "./workers/o200k_base": {
+      "types": "./dist/workers/o200k_base.d.ts",
+      "module": "./dist/workers/o200k_base.js",
+      "worker_asset": "./dist/workers/o200k_base.worker.js",
+      "value_exports": [
+        "createTokenCounter"
+      ],
+      "type_only_exports": [
+        "AsyncTokenCounter",
+        "BrowserWorkerTokenCounter"
+      ]
+    },
+    "./workers/p50k_base": {
+      "types": "./dist/workers/p50k_base.d.ts",
+      "module": "./dist/workers/p50k_base.js",
+      "worker_asset": "./dist/workers/p50k_base.worker.js",
+      "value_exports": [
+        "createTokenCounter"
+      ],
+      "type_only_exports": [
+        "AsyncTokenCounter",
+        "BrowserWorkerTokenCounter"
+      ]
+    },
+    "./workers/p50k_edit": {
+      "types": "./dist/workers/p50k_edit.d.ts",
+      "module": "./dist/workers/p50k_edit.js",
+      "worker_asset": "./dist/workers/p50k_edit.worker.js",
+      "value_exports": [
+        "createTokenCounter"
+      ],
+      "type_only_exports": [
+        "AsyncTokenCounter",
+        "BrowserWorkerTokenCounter"
+      ]
+    },
+    "./workers/r50k_base": {
+      "types": "./dist/workers/r50k_base.d.ts",
+      "module": "./dist/workers/r50k_base.js",
+      "worker_asset": "./dist/workers/r50k_base.worker.js",
+      "value_exports": [
+        "createTokenCounter"
+      ],
+      "type_only_exports": [
+        "AsyncTokenCounter",
+        "BrowserWorkerTokenCounter"
+      ]
+    }
+  },
+  "declaration_fragments": {
+    "./dist/token-counter.d.ts": [
+      "export type TokenEncoding = \"cl100k_base\" | \"gpt2\" | \"o200k_base\" | \"p50k_base\" | \"p50k_edit\" | \"r50k_base\";",
+      "export interface TokenCounter { count(text: string): number; }",
+      "encoding?: TokenEncoding;",
+      "fallbackEncoding?: TokenEncoding;",
+      "provider?: string;",
+      "model?: string;"
+    ],
+    "./dist/async-token-counter.d.ts": [
+      "export interface AsyncTokenCounter { count(text: string): Promise<number>; }",
+      "export interface BrowserWorkerTokenCounter extends AsyncTokenCounter { close(): void; }"
+    ],
+    "./dist/registry.d.ts": [
+      "export declare function resolveTokenEncoding(descriptor: TokenCounterDescriptor): TokenEncoding;"
+    ],
+    "./dist/adapters/js-tiktoken.d.ts": [
+      "export declare class JsTiktokenCounter implements TokenCounter {",
+      "constructor(encoding: TokenEncoding);",
+      "count(text: string): number;"
+    ],
+    "./dist/index.d.ts": [
+      "export declare function createTokenCounter(descriptor: TokenCounterDescriptor): TokenCounter;"
+    ],
+    "./dist/encodings/<encoding>.d.ts": [
+      "export declare function createTokenCounter(): TokenCounter;"
+    ],
+    "./dist/workers/<encoding>.d.ts": [
+      "export declare function createTokenCounter(): Promise<BrowserWorkerTokenCounter>;"
+    ]
+  },
+  "forbidden_declaration_fragments": [
+    "from \"js-tiktoken",
+    "bpe_ranks",
+    "special_tokens",
+    "number[]",
+    "PendingCount",
+    "requestId",
+    "postMessage",
+    "MessageEvent",
+    "workerUrl",
+    "operation:",
+    "ready:",
+    "ok:",
+    "id:",
+    "error: string"
+  ],
+  "public_contracts": [
+    "TokenCounter.count(text: string): number",
+    "createTokenCounter(descriptor: TokenCounterDescriptor): TokenCounter",
+    "resolveTokenEncoding(descriptor: TokenCounterDescriptor): TokenEncoding",
+    "new JsTiktokenCounter(encoding: TokenEncoding): TokenCounter",
+    "isolated createTokenCounter(): TokenCounter",
+    "AsyncTokenCounter.count(text: string): Promise<number>",
+    "worker createTokenCounter(): Promise<BrowserWorkerTokenCounter>",
+    "BrowserWorkerTokenCounter.close(): void",
+    "worker factories resolve only after readiness",
+    "close rejects pending and future counts with content-free errors"
+  ],
+  "non_normative_evidence": [
+    "tokenizer dependency internals",
+    "generated bundle bytes and hashes",
+    "worker message protocol internals",
+    "evaluation timing and memory values",
+    "provider billing and usage accounting"
+  ]
+}

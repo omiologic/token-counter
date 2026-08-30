@@ -374,6 +374,8 @@ The committed suite covers:
 - exact-version CDN-style artifacts, immutable cache headers, SHA-384 manifests, and equivalent vendored imports.
 - worker readiness, concurrency, lifecycle, failure, close, offline, output-safety, and per-encoding trusted parity.
 - worker factories with no main-thread tokenizer payload and worker artifacts containing exactly one selected rank module.
+- the recorded public export and declaration baseline compiled with TypeScript
+  `NodeNext` and `Bundler` module resolution.
 
 The browser worker evaluation measures the public `o200k_base` worker against
 the synchronous isolated counter for a sustained large nonrepeated workload:
@@ -396,6 +398,55 @@ Reference provenance and reproduction instructions are recorded in [`test/fixtur
 ```sh
 /tmp/token-counter-reference/bin/python test/reference/verify_tiktoken.py
 ```
+
+## Compatibility and semver baseline
+
+The checked-in [public API baseline](./test/fixtures/public-api-baseline.json)
+is the reviewable inventory of package subpaths, value exports, type-only
+exports, worker assets, and declaration signatures. The committed
+[consumer fixture](./test/fixtures/consumers/public-api.ts) exercises every
+surface. Package tests compare the packed export map and declarations to that
+baseline and compile the consumer with both supported TypeScript resolution
+styles.
+
+The following are public compatibility commitments:
+
+- the root, `/core`, `/js`, `/encodings/<encoding>`, and
+  `/workers/<encoding>` subpaths recorded in the baseline;
+- the application-owned exported names and signatures reachable from those
+  subpaths;
+- synchronous numeric `TokenCounter.count()`, synchronous isolated factories,
+  and the descriptor-based root factory;
+- asynchronous worker creation and counting, readiness before factory
+  resolution, caller-owned `close()`, and deterministic rejection of pending
+  and future work after closure;
+- deterministic encoding selection, local/offline counting after explicit
+  asset initialization, numeric-only results, and content-free failures; and
+- ESM, browser, and Node.js 18-or-newer support declared by the package.
+
+Adding a new opt-in subpath or independent export is normally additive when it
+does not change existing declarations, loading, or behavior. Adding an optional
+descriptor field is also normally additive. Removing or renaming a supported
+subpath or export, making an optional input required, changing a public type or
+constructor incompatibly, changing a synchronous result to asynchronous (or
+the reverse), replacing a numeric result, or weakening worker close, offline,
+or content-safety behavior is breaking under the configured semver policy.
+
+Expanding `TokenEncoding`, changing a model-to-encoding mapping, or adopting a
+tokenizer change that alters counts requires explicit compatibility review; a
+union expansion can break exhaustive TypeScript consumers and is not assumed
+to be additive. Dependency implementation types must never enter the public
+declaration closure.
+
+Dependency internals, private adapter classes, worker message protocol details,
+generated bundle bytes and hashes across versions, exact content-free error
+wording, and evaluation timing or memory measurements are not compatibility
+promises. Immutable artifacts remain immutable within a selected version, but
+their byte layout is not frozen across versions. Provider billing and usage
+accounting remain outside this package.
+
+This baseline supports future version classification. It does not select a
+version or authorize a release.
 
 ## Dependency policy
 
