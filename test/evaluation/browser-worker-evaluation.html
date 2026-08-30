@@ -32,10 +32,6 @@
       };
       const memory = () => performance.memory?.usedJSHeapSize ?? null;
       const aggregateMemory = async () => {
-        if (typeof performance.measureUserAgentSpecificMemory === "function") {
-          const result = await performance.measureUserAgentSpecificMemory();
-          return { bytes: result.bytes, source: "measureUserAgentSpecificMemory" };
-        }
         return { bytes: memory(), source: "performance.memory" };
       };
       const materialize = (input) => {
@@ -77,7 +73,7 @@
         };
       };
 
-      let worker;
+      let workerCounter;
       try {
         const fixtureData = await originalFetch("/fixtures/token-counts.json").then(
           (response) => response.json(),
@@ -89,34 +85,10 @@
         const memoryAfterMainInitialization = await aggregateMemory();
 
         const workerStarted = performance.now();
-        worker = new Worker("/worker.js", { type: "module" });
-        let requestSequence = 0;
-        const pending = new Map();
-        const ready = new Promise((resolve, reject) => {
-          worker.addEventListener("error", () =>
-            reject(new Error("Worker initialization failed.")),
-          );
-          worker.addEventListener("message", (event) => {
-            if (event.data?.ready === true) {
-              resolve(event.data);
-              return;
-            }
-            const request = pending.get(event.data?.id);
-            if (request === undefined) return;
-            pending.delete(event.data.id);
-            request.resolve(event.data);
-          });
-        });
-        const workerReady = await ready;
+        const workerApi = await import("/worker-api.js");
+        workerCounter = await workerApi.createTokenCounter();
         const workerInitializationMilliseconds = performance.now() - workerStarted;
         const memoryAfterWorkerInitialization = await aggregateMemory();
-        const send = (message) =>
-          new Promise((resolve) => {
-            const id = requestSequence;
-            requestSequence += 1;
-            pending.set(id, { resolve });
-            worker.postMessage({ ...message, id });
-          });
 
         await originalFetch("/__worker_evaluation_checkpoint__");
         globalThis.fetch = deny;
@@ -136,11 +108,10 @@
         for (const fixture of fixtureData.fixtures) {
           const text = materialize(fixture.input);
           const mainCount = main.count(text);
-          const workerResponse = await send({ operation: "count", text });
+          const workerCount = await workerCounter.count(text);
           if (
             mainCount !== fixture.expected.o200k_base ||
-            workerResponse.ok !== true ||
-            workerResponse.count !== mainCount
+            workerCount !== mainCount
           ) {
             throw new Error("Parity failed.");
           }
@@ -148,16 +119,17 @@
         }
 
         const privateMarker = "private-browser-worker-evaluation-marker";
-        const invalidResponse = await send({
-          operation: "count",
-          text: { privateMarker },
-        });
-        if (
-          invalidResponse.ok !== false ||
-          invalidResponse.error !== "Token counting failed." ||
-          JSON.stringify(invalidResponse).includes(privateMarker)
-        ) {
-          throw new Error("Worker exposed a content-bearing failure.");
+        try {
+          await workerCounter.count({ privateMarker });
+          throw new Error("Invalid worker input was accepted.");
+        } catch (error) {
+          if (
+            !(error instanceof Error) ||
+            error.message !== "Token counting failed." ||
+            error.message.includes(privateMarker)
+          ) {
+            throw new Error("Worker exposed a content-bearing failure.");
+          }
         }
 
         const workloadFixture = fixtureData.fixtures.find(
@@ -176,17 +148,14 @@
           return count;
         });
 
-        const workerCountingDurations = [];
         const workerRoundTripDurations = [];
         const workerResponsiveness = await heartbeat(async () => {
           let count = 0;
           for (let index = 0; index < iterations; index += 1) {
             const started = performance.now();
-            const response = await send({ operation: "count", text: workload });
+            const response = await workerCounter.count(workload);
             workerRoundTripDurations.push(performance.now() - started);
-            if (response.ok !== true) throw new Error("Worker count failed.");
-            workerCountingDurations.push(response.counting_milliseconds);
-            count = response.count;
+            count = response;
           }
           return count;
         });
@@ -197,18 +166,12 @@
           throw new Error("Workload count diverged.");
         }
 
-        const workerMetrics = await send({ operation: "metrics" });
-        if (
-          workerMetrics.ok !== true ||
-          workerReady.console_calls !== 0 ||
-          workerMetrics.console_calls !== 0 ||
-          consoleCalls !== 0
-        ) {
+        if (consoleCalls !== 0) {
           throw new Error("Unexpected console output.");
         }
         const memoryAfterEvaluation = await aggregateMemory();
-        worker.terminate();
-        worker = undefined;
+        workerCounter.close();
+        workerCounter = undefined;
 
         await report({
           initialization: {
@@ -223,8 +186,6 @@
               memoryAfterWorkerInitialization.bytes,
             aggregate_before_bytes: memoryBefore.bytes,
             aggregate_source: memoryBefore.source,
-            worker_after_evaluation_bytes: workerMetrics.memory_bytes,
-            worker_ready_bytes: workerReady.memory_bytes,
           },
           parity_checks: parityChecks,
           responsiveness: {
@@ -236,21 +197,15 @@
               operation_milliseconds: mainResponsiveness.operation_milliseconds,
             },
             worker: {
-              count_milliseconds_median: median(workerCountingDurations),
               heartbeat_max_gap_milliseconds:
                 workerResponsiveness.heartbeat_max_gap_milliseconds,
               operation_milliseconds: workerResponsiveness.operation_milliseconds,
               round_trip_milliseconds_median: median(workerRoundTripDurations),
-              transfer_and_dispatch_milliseconds_median: median(
-                workerRoundTripDurations.map(
-                  (value, index) => value - workerCountingDurations[index],
-                ),
-              ),
             },
           },
         });
       } catch {
-        worker?.terminate();
+        workerCounter?.close();
         await report({ failed: true });
       }
     </script>

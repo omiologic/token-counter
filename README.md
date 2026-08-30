@@ -47,7 +47,9 @@ Recommended invariants:
 - encoding/rank data is bundled locally rather than fetched at runtime;
 - tokenizer input is never logged or persisted by this package;
 - this package does not read environment variables or credentials;
-- this package performs no runtime network requests;
+- this package calls no remote service and downloads no tokenizer data;
+- optional workers load one explicitly selected, colocated module asset during
+  initialization and make no later counting request;
 - consumers sanitize secret-bearing text before counting;
 - tokenizer dependencies are version-pinned and audited before upgrades.
 
@@ -60,6 +62,14 @@ The public surface is deliberately small and does not expose tokenizer dependenc
 ```ts
 export interface TokenCounter {
   count(text: string): number;
+}
+
+export interface AsyncTokenCounter {
+  count(text: string): Promise<number>;
+}
+
+export interface BrowserWorkerTokenCounter extends AsyncTokenCounter {
+  close(): void;
 }
 
 export interface TokenCounterDescriptor {
@@ -138,6 +148,45 @@ resolved package and dependency artifacts together and serve versioned assets
 with immutable caching. Do not substitute a runtime rank-data URL or a floating
 production version.
 
+### Optional browser worker entry points
+
+Browser applications with sustained large workloads can select an encoding-
+specific dedicated worker without initializing that tokenizer on the main
+thread:
+
+```ts
+import { createTokenCounter } from "@omiologic/token-counter/workers/o200k_base";
+
+const counter = await createTokenCounter();
+try {
+  const tokens = await counter.count("sanitized model-bound text");
+} finally {
+  counter.close();
+}
+```
+
+The factory resolves only after the local module worker is ready. `close()`
+terminates the caller-owned worker and rejects pending and future counts with a
+content-free error. The synchronous `TokenCounter` contract and root factory
+remain unchanged.
+
+| Encoding | Import path |
+| --- | --- |
+| `cl100k_base` | `@omiologic/token-counter/workers/cl100k_base` |
+| `gpt2` | `@omiologic/token-counter/workers/gpt2` |
+| `o200k_base` | `@omiologic/token-counter/workers/o200k_base` |
+| `p50k_base` | `@omiologic/token-counter/workers/p50k_base` |
+| `p50k_edit` | `@omiologic/token-counter/workers/p50k_edit` |
+| `r50k_base` | `@omiologic/token-counter/workers/r50k_base` |
+
+Each factory resolves its matching `<encoding>.worker.js` beside the factory
+module. A bundler must preserve that relative module-worker URL and emit or copy
+the matching worker asset; a static host must serve both files from the same
+exact-version directory. Worker initialization is the explicit local asset-load
+boundary. Counting performs no later network request, returns only an integer,
+and does not log or persist text. Keep the synchronous surface for small or
+infrequent counts where worker startup and message transfer are not justified.
+
 ### Immutable CDN and vendored layout
 
 The verified static layout maps the same npm specifiers to standalone browser
@@ -149,6 +198,8 @@ ESM files beneath an exact-version prefix:
 | `@omiologic/token-counter/core` | `/npm/@omiologic/token-counter@<exact-version>/core.js` |
 | `@omiologic/token-counter/js` | `/npm/@omiologic/token-counter@<exact-version>/js.js` |
 | `@omiologic/token-counter/encodings/<encoding>` | `/npm/@omiologic/token-counter@<exact-version>/encodings/<encoding>.js` |
+| `@omiologic/token-counter/workers/<encoding>` | `/npm/@omiologic/token-counter@<exact-version>/workers/<encoding>.js` |
+| worker asset selected by that factory | `/npm/@omiologic/token-counter@<exact-version>/workers/<encoding>.worker.js` |
 
 `<exact-version>` must be replaced by an explicitly selected immutable package
 version. This repository has not selected one and does not publish or endorse a
@@ -184,6 +235,8 @@ import maps with revalidation or a short cache lifetime. Verify each artifact's
 SHA-384 value before deployment. Where the browser loading mechanism supports
 Subresource Integrity for the module entry, use the same `sha384-...` value;
 otherwise enforce the manifest during the trusted build or vendoring step.
+Worker factory and worker asset hashes are both included in the manifest and
+must be verified and vendored together.
 
 The local verification materializes this layout from a fixture-only version of
 the packed package, checks every hash, copies and imports the vendored files,
@@ -238,7 +291,12 @@ Server
 
 Client counting is useful for UX. Server counting is suitable for preflight enforcement. Provider-reported usage remains the post-invocation source of truth.
 
-The emitted ESM targets ES2022 and supports Node.js 18 or newer. Browser consumers should use an ESM-capable bundler so the package and its locally bundled encoding data are included in the application build. Initialization and counting perform no runtime downloads or remote lookups.
+The emitted ESM targets ES2022 and supports Node.js 18 or newer. Browser
+consumers should use an ESM-capable bundler so the package and its locally
+bundled encoding data are included in the application build. Synchronous
+initialization and all counting perform no runtime downloads or remote lookups;
+an optional worker factory has the explicit colocated asset-load boundary
+described above.
 
 ## Why `js-tiktoken`
 
@@ -272,13 +330,17 @@ token-counter/
 │   ├── index.ts
 │   ├── core.ts
 │   ├── js.ts
+│   ├── async-token-counter.ts
 │   ├── token-counter.ts
 │   ├── registry.ts
 │   ├── encodings/
 │   │   └── <encoding>.ts
-│   └── adapters/
-│       ├── js-tiktoken.ts
-│       └── js-tiktoken-lite.ts
+│   ├── adapters/
+│   │   ├── browser-worker.ts
+│   │   ├── js-tiktoken.ts
+│   │   └── js-tiktoken-lite.ts
+│   └── workers/
+│       └── <encoding>.{ts,worker.ts}
 ├── test/
 │   ├── fixtures/
 │   ├── reference/
@@ -310,17 +372,19 @@ The committed suite covers:
 - public results, errors, logs, declarations, and exports that contain no input text or token arrays.
 - one-rank-only browser bundles, trusted parity, and denied-network execution for every isolated encoding entry.
 - exact-version CDN-style artifacts, immutable cache headers, SHA-384 manifests, and equivalent vendored imports.
+- worker readiness, concurrency, lifecycle, failure, close, offline, output-safety, and per-encoding trusted parity.
+- worker factories with no main-thread tokenizer payload and worker artifacts containing exactly one selected rank module.
 
-An evaluation-only browser worker prototype also measures a sustained large
-nonrepeated workload without changing the public package surface:
+The browser worker evaluation measures the public `o200k_base` worker against
+the synchronous isolated counter for a sustained large nonrepeated workload:
 
 ```sh
 npm run build
 node test/evaluation/evaluate-browser-worker.mjs
 ```
 
-The recorded local Chrome result found a material responsiveness benefit and
-supports a separately planned opt-in worker surface. See the
+The production confirmation reduced the median maximum heartbeat gap by 94.1%
+while preserving fixture parity and making no request after initialization. See the
 [browser worker evaluation](./_notes/worker-analysis/README.md) for the workload,
 payload and memory costs, and adoption boundary. Performance values are
 machine-specific evidence rather than test thresholds.
@@ -345,8 +409,7 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for the boundary design and security in
 
 ## Status
 
-The root, core, JavaScript adapter, and isolated encoding surfaces are verified
-locally for Node and browser runtimes. An opt-in browser worker surface is
-planned from measured evidence but is not implemented or exported. The package
-remains private and has no selected release version; verification does not
-authorize publication or release.
+The root, core, JavaScript adapter, isolated encoding, and optional browser
+worker surfaces are verified locally. The package remains private and has no
+selected release version; verification does not authorize publication or
+release.

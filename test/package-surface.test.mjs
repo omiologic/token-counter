@@ -95,6 +95,9 @@ test("packed package exposes every documented entry point", async () => {
       ...ENCODINGS.flatMap((encoding) => [
         `dist/encodings/${encoding}.js`,
         `dist/encodings/${encoding}.d.ts`,
+        `dist/workers/${encoding}.js`,
+        `dist/workers/${encoding}.d.ts`,
+        `dist/workers/${encoding}.worker.js`,
       ]),
       "package.json",
     ]) {
@@ -114,6 +117,7 @@ test("packed package exposes every documented entry point", async () => {
       "./core",
       ...ENCODINGS.map((encoding) => `./encodings/${encoding}`),
       "./js",
+      ...ENCODINGS.map((encoding) => `./workers/${encoding}`),
     ].sort());
 
     const consumer = join(packageRoot, "package-consumer.mjs");
@@ -127,6 +131,10 @@ test("packed package exposes every documented entry point", async () => {
           (encoding, index) =>
             `import { createTokenCounter as createIsolated${index} } from "@omiologic/token-counter/encodings/${encoding}";`,
         ),
+        ...ENCODINGS.map(
+          (encoding, index) =>
+            `import { createTokenCounter as createWorker${index} } from "@omiologic/token-counter/workers/${encoding}";`,
+        ),
         'if (resolveTokenEncoding({ provider: "openai", model: "gpt-4" }) !== "cl100k_base") throw new Error("core failed");',
         'if (createTokenCounter({ encoding: "cl100k_base" }).count("hello") !== 1) throw new Error("root failed");',
         'if (new JsTiktokenCounter("cl100k_base").count("hello") !== 1) throw new Error("js failed");',
@@ -134,6 +142,7 @@ test("packed package exposes every documented entry point", async () => {
           (encoding, index) =>
             `if (createIsolated${index}().count("hello") !== 1) throw new Error("${encoding} failed");`,
         ),
+        `if ([${ENCODINGS.map((_, index) => `createWorker${index}`).join(", ")}].some((factory) => typeof factory !== "function")) throw new Error("worker surface failed");`,
       ].join("\n"),
       "utf8",
     );
@@ -204,9 +213,19 @@ test("packed package exposes every documented entry point", async () => {
           (encoding, index) =>
             `import { createTokenCounter as createIsolated${index} } from "@omiologic/token-counter/encodings/${encoding}";`,
         ),
+        ...ENCODINGS.map(
+          (encoding, index) =>
+            `import { createTokenCounter as createWorker${index} } from "@omiologic/token-counter/workers/${encoding}";`,
+        ),
+        'import type { BrowserWorkerTokenCounter } from "@omiologic/token-counter/workers/o200k_base";',
+        'import type { AsyncTokenCounter } from "@omiologic/token-counter/core";',
         'const descriptor: TokenCounterDescriptor = { encoding: "cl100k_base" };',
         `const counters: TokenCounter[] = [createTokenCounter(descriptor), new JsTiktokenCounter(resolveTokenEncoding(descriptor)), ${ENCODINGS.map((_, index) => `createIsolated${index}()`).join(", ")}];`,
+        `const workerCounters: Promise<BrowserWorkerTokenCounter>[] = [${ENCODINGS.map((_, index) => `createWorker${index}()`).join(", ")}];`,
+        "const acceptsAsync = (counter: AsyncTokenCounter): void => { void counter; };",
+        "void acceptsAsync;",
         'void counters;',
+        'void workerCounters;',
       ].join("\n"),
       "utf8",
     );
@@ -270,6 +289,7 @@ test("packed public declarations contain only application-owned types", async ()
       "core.d.ts",
       "js.d.ts",
       ...ENCODINGS.map((encoding) => `encodings/${encoding}.d.ts`),
+      ...ENCODINGS.map((encoding) => `workers/${encoding}.d.ts`),
     ]) {
       const contents = await readFile(join(packageRoot, "dist", declaration), "utf8");
       assert.equal(contents.includes('from "js-tiktoken"'), false);

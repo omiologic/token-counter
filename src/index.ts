@@ -8,6 +8,10 @@ import type {
 
 export { JsTiktokenCounter, resolveTokenEncoding };
 export type {
+  AsyncTokenCounter,
+  BrowserWorkerTokenCounter,
+} from "./async-token-counter.js";
+export type {
   TokenCounter,
   TokenCounterDescriptor,
   TokenEncoding,

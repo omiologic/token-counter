@@ -63,9 +63,6 @@ function summarize(samples) {
       main_operation: median(
         path((sample) => sample.responsiveness.main.operation_milliseconds),
       ),
-      worker_count: median(
-        path((sample) => sample.responsiveness.worker.count_milliseconds_median),
-      ),
       worker_heartbeat_max_gap: median(
         path(
           (sample) => sample.responsiveness.worker.heartbeat_max_gap_milliseconds,
@@ -77,12 +74,6 @@ function summarize(samples) {
       worker_round_trip: median(
         path(
           (sample) => sample.responsiveness.worker.round_trip_milliseconds_median,
-        ),
-      ),
-      worker_transfer_and_dispatch: median(
-        path(
-          (sample) =>
-            sample.responsiveness.worker.transfer_and_dispatch_milliseconds_median,
         ),
       ),
     },
@@ -115,7 +106,11 @@ function createEvaluationServer(siteRoot) {
       resolve(ROOT, "test/evaluation/browser-worker-evaluation.html"),
     ],
     ["/main.js", resolve(siteRoot, "main.js")],
-    ["/worker.js", resolve(siteRoot, "worker.js")],
+    ["/worker-api.js", resolve(siteRoot, "worker-api.js")],
+    [
+      "/o200k_base.worker.js",
+      resolve(siteRoot, "o200k_base.worker.js"),
+    ],
     [
       "/fixtures/token-counts.json",
       resolve(ROOT, "test/fixtures/token-counts.json"),
@@ -146,7 +141,11 @@ function createEvaluationServer(siteRoot) {
       const fileStat = await stat(filePath);
       if (!fileStat.isFile()) throw new Error("Fixture path was not a file.");
       const body = await readFile(filePath);
-      const immutable = ["/main.js", "/worker.js"].includes(requestUrl.pathname);
+      const immutable = [
+        "/main.js",
+        "/worker-api.js",
+        "/o200k_base.worker.js",
+      ].includes(requestUrl.pathname);
       response.writeHead(200, {
         "cache-control": immutable
           ? "public, max-age=31536000, immutable"
@@ -248,11 +247,11 @@ async function runBrowserSample(browser, siteRoot) {
 
 async function payloadMeasurements(siteRoot) {
   const files = await Promise.all(
-    ["main.js", "worker.js"].map(async (file) => {
+    ["main.js", "worker-api.js", "o200k_base.worker.js"].map(async (file) => {
       const contents = await readFile(resolve(siteRoot, file));
       const text = contents.toString("utf8");
       const forbiddenCapabilities =
-        file === "main.js"
+        file !== "o200k_base.worker.js"
           ? ["fetch(", "XMLHttpRequest", "WebSocket", "sendBeacon", "indexedDB"]
           : [];
       for (const forbidden of ["http://", "https://", ...forbiddenCapabilities]) {
@@ -280,7 +279,7 @@ const temporaryRoot = await mkdtemp(join(os.tmpdir(), "token-counter-worker-eval
 try {
   for (const [entryPoint, outfile] of [
     ["test/evaluation/browser-worker-main.mjs", "main.js"],
-    ["test/evaluation/browser-worker-runtime.mjs", "worker.js"],
+    ["dist/workers/o200k_base.js", "worker-api.js"],
   ]) {
     await build({
       bundle: true,
@@ -294,6 +293,26 @@ try {
     });
   }
 
+  await build({
+    bundle: true,
+    format: "esm",
+    legalComments: "none",
+    minify: true,
+    outfile: resolve(temporaryRoot, "o200k_base.worker.js"),
+    platform: "browser",
+    stdin: {
+      contents: [
+        'import { installBrowserWorkerGuards } from "./test/browser-worker-guard.mjs";',
+        "installBrowserWorkerGuards();",
+        'await import("./dist/workers/o200k_base.worker.js");',
+      ].join("\n"),
+      loader: "js",
+      resolveDir: ROOT,
+      sourcefile: "o200k_base.production-worker-evaluation.mjs",
+    },
+    target: "es2022",
+  });
+
   const browser = await findBrowser();
   const { stdout: browserVersionOutput } = await execFileAsync(browser, ["--version"]);
   const samples = [];
@@ -301,7 +320,7 @@ try {
     samples.push(await runBrowserSample(browser, temporaryRoot));
   }
   const results = {
-    schema_version: 1,
+    schema_version: 2,
     conditions: {
       arch: os.arch(),
       browser: browserVersionOutput.trim(),

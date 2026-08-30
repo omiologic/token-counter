@@ -20,6 +20,14 @@ Consumers depend on an application-owned abstraction:
 export interface TokenCounter {
   count(text: string): number;
 }
+
+export interface AsyncTokenCounter {
+  count(text: string): Promise<number>;
+}
+
+export interface BrowserWorkerTokenCounter extends AsyncTokenCounter {
+  close(): void;
+}
 ```
 
 Model-specific tokenization remains behind adapters.
@@ -157,7 +165,7 @@ The registry is optional infrastructure. Simple consumers may instantiate an ada
 
 ## Public contract
 
-The first release should prefer a minimal API.
+The public API remains deliberately narrow.
 
 ```ts
 export interface TokenCounter {
@@ -165,9 +173,10 @@ export interface TokenCounter {
 }
 
 export interface TokenCounterDescriptor {
+  fallbackEncoding?: TokenEncoding;
   provider?: string;
   model?: string;
-  encoding: string;
+  encoding?: TokenEncoding;
 }
 ```
 
@@ -181,10 +190,6 @@ encoding resolver, include:
 export interface TokenMeasurement {
   tokens: number;
   encoding: string;
-}
-
-export interface AsyncTokenCounter {
-  count(text: string): Promise<number>;
 }
 ```
 
@@ -208,34 +213,25 @@ an implementation may share only immutable local code or rank data, never input
 text or token material.
 
 An implementation whose count necessarily crosses an asynchronous boundary,
-such as a browser worker, cannot satisfy `TokenCounter`. The browser-worker
-evaluation demonstrated a material responsiveness benefit for twelve
-consecutive counts of the bounded 54,843-byte nonrepeated fixture, so a
-separately planned optional worker surface is justified for that class of
-consumer workload. The smallest core candidate remains a separate
-application-owned contract:
+such as a browser worker, cannot satisfy `TokenCounter`. The optional browser
+worker therefore implements the separate application-owned `AsyncTokenCounter`
+contract and adds explicit `close()` ownership through
+`BrowserWorkerTokenCounter`.
 
-```ts
-export interface AsyncTokenCounter {
-  count(text: string): Promise<number>;
-}
-```
-
-The concrete adapter must also make resource ownership explicit. The measured
-prototype nearly doubled tokenizer payload and aggregate browser memory when
-the main-thread and worker bundles were both loaded. A worker-only consumer
-must therefore be able to avoid main-thread tokenizer initialization. A worker
-surface also needs a documented close/termination operation and must
-reject pending and future requests with content-free errors after closure.
+Each encoding-specific worker factory loads one matching local module-worker
+asset and resolves only after it is ready. Its main-thread factory contains no
+tokenizer rank data, so a worker-only consumer avoids duplicate main-thread
+tokenizer initialization. The measured comparison still duplicates the rank
+only because it deliberately loads both sync and worker paths side by side.
+Initialization, worker, count, and close failures are content-free. `close()`
+terminates the worker and rejects pending and future requests deterministically.
 Cancellation should be added only when the adopted runtime demonstrates a need
 and defines whether it cancels computation or merely discards the result; it
 must not be assumed by the minimal interface. Initialization should occur once
-per adapter instance rather than being hidden in every `count()` call. Browser
-and Node implementations must retain equivalent counting semantics and the same
-offline capability boundary even when their lifecycle mechanics differ.
-
-No current exported adapter implements either extension. These are compatibility
-rules for the planned worker implementation, not a supported public API.
+per adapter instance rather than being hidden in every `count()` call. The
+worker is browser-only, while trusted fixture parity preserves equivalent
+counting semantics with Node and synchronous browser paths. Counting remains
+offline after the explicit worker initialization boundary.
 
 ## `js-tiktoken` adapter
 
@@ -413,10 +409,14 @@ Initial direction:
 token-counter/
 ├── src/
 │   ├── index.ts
+│   ├── async-token-counter.ts
 │   ├── token-counter.ts
 │   ├── registry.ts
-│   └── adapters/
-│       └── js-tiktoken.ts
+│   ├── adapters/
+│   │   ├── browser-worker.ts
+│   │   └── js-tiktoken.ts
+│   └── workers/
+│       └── <encoding>.{ts,worker.ts}
 ├── test/
 │   ├── fixtures/
 │   └── js-tiktoken.test.ts

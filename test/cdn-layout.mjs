@@ -35,6 +35,20 @@ export const CDN_SURFACES = [
     source: `dist/encodings/${encoding}.js`,
     subpath: `./encodings/${encoding}`,
   })),
+  ...[
+    "cl100k_base",
+    "gpt2",
+    "o200k_base",
+    "p50k_base",
+    "p50k_edit",
+    "r50k_base",
+  ].map((encoding) => ({
+    artifact: `workers/${encoding}.js`,
+    source: `dist/workers/${encoding}.js`,
+    subpath: `./workers/${encoding}`,
+    workerArtifact: `workers/${encoding}.worker.js`,
+    workerSource: `dist/workers/${encoding}.worker.js`,
+  })),
 ];
 
 function sha384(contents) {
@@ -113,7 +127,7 @@ export async function materializeCdnLayout(temporaryRoot) {
     const externalImports = Object.values(result.metafile.outputs)
       .flatMap(({ imports }) => imports.map(({ path }) => path))
       .sort();
-    artifacts[surface.subpath] = {
+    const metadata = {
       bytes: contents.byteLength,
       external_imports: externalImports,
       integrity: sha384(contents),
@@ -121,6 +135,35 @@ export async function materializeCdnLayout(temporaryRoot) {
       rank_modules: rankModules,
       source_export: surface.source,
     };
+    if (surface.workerSource !== undefined) {
+      const workerOutfile = join(artifactRoot, surface.workerArtifact);
+      const workerResult = await build({
+        bundle: true,
+        entryPoints: [join(packageRoot, surface.workerSource)],
+        format: "esm",
+        legalComments: "none",
+        metafile: true,
+        minify: true,
+        outfile: workerOutfile,
+        platform: "browser",
+        target: "es2022",
+      });
+      const workerContents = await readFile(workerOutfile);
+      metadata.worker = {
+        bytes: workerContents.byteLength,
+        external_imports: Object.values(workerResult.metafile.outputs)
+          .flatMap(({ imports }) => imports.map(({ path }) => path))
+          .sort(),
+        integrity: sha384(workerContents),
+        path: `${CDN_BASE_PATH}/${surface.workerArtifact}`,
+        rank_modules: Object.keys(workerResult.metafile.inputs)
+          .filter((path) => path.includes("/js-tiktoken/dist/ranks/"))
+          .map((path) => path.slice(path.lastIndexOf("/") + 1))
+          .sort(),
+        source: surface.workerSource,
+      };
+    }
+    artifacts[surface.subpath] = metadata;
   }
 
   const integrityManifest = {
@@ -176,6 +219,10 @@ function browserFixtureHtml() {
       try {
         if (!(surface in urls)) throw new Error("Unknown fixture surface.");
         const publicApi = await import(urls[surface]);
+        let workerCounter;
+        if (surface.startsWith("./workers/")) {
+          workerCounter = await publicApi.createTokenCounter();
+        }
         const loadedResponse = await fetch("/__token_counter_cdn_modules_loaded__?surface=" + encodeURIComponent(surface));
         if (!loadedResponse.ok) throw new Error("Load checkpoint failed.");
 
@@ -199,6 +246,9 @@ function browserFixtureHtml() {
           if (publicApi.resolveTokenEncoding({ provider: "openai", model: "gpt-4" }) !== "cl100k_base") throw new Error("Core failed.");
         } else if (surface === "./js") {
           if (new publicApi.JsTiktokenCounter("cl100k_base").count("hello") !== 1) throw new Error("JavaScript adapter failed.");
+        } else if (surface.startsWith("./workers/")) {
+          if (await workerCounter.count("hello") !== 1) throw new Error("Worker failed.");
+          workerCounter.close();
         } else if (publicApi.createTokenCounter().count("hello") !== 1) {
           throw new Error("Isolated encoding failed.");
         }

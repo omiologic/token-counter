@@ -62,6 +62,42 @@
       "browser": "./dist/encodings/r50k_base.js",
       "import": "./dist/encodings/r50k_base.js",
       "default": "./dist/encodings/r50k_base.js"
+    },
+    "./workers/cl100k_base": {
+      "types": "./dist/workers/cl100k_base.d.ts",
+      "browser": "./dist/workers/cl100k_base.js",
+      "import": "./dist/workers/cl100k_base.js",
+      "default": "./dist/workers/cl100k_base.js"
+    },
+    "./workers/gpt2": {
+      "types": "./dist/workers/gpt2.d.ts",
+      "browser": "./dist/workers/gpt2.js",
+      "import": "./dist/workers/gpt2.js",
+      "default": "./dist/workers/gpt2.js"
+    },
+    "./workers/o200k_base": {
+      "types": "./dist/workers/o200k_base.d.ts",
+      "browser": "./dist/workers/o200k_base.js",
+      "import": "./dist/workers/o200k_base.js",
+      "default": "./dist/workers/o200k_base.js"
+    },
+    "./workers/p50k_base": {
+      "types": "./dist/workers/p50k_base.d.ts",
+      "browser": "./dist/workers/p50k_base.js",
+      "import": "./dist/workers/p50k_base.js",
+      "default": "./dist/workers/p50k_base.js"
+    },
+    "./workers/p50k_edit": {
+      "types": "./dist/workers/p50k_edit.d.ts",
+      "browser": "./dist/workers/p50k_edit.js",
+      "import": "./dist/workers/p50k_edit.js",
+      "default": "./dist/workers/p50k_edit.js"
+    },
+    "./workers/r50k_base": {
+      "types": "./dist/workers/r50k_base.d.ts",
+      "browser": "./dist/workers/r50k_base.js",
+      "import": "./dist/workers/r50k_base.js",
+      "default": "./dist/workers/r50k_base.js"
     }
   },
   "engines": {
@@ -74,7 +110,7 @@
     "test": "npm run test:node && npm run test:browser && npm run test:cdn",
     "test:browser": "npm run build && npm run build:test-browser && node test/run-browser-tests.mjs",
     "test:cdn": "npm run build && node --test test/cdn-layout.test.mjs && node test/run-cdn-browser-tests.mjs",
-    "test:node": "npm run build && node --test test/bundle-analysis.test.mjs test/encoding-isolation.test.mjs test/isolated-bundles.test.mjs test/isolated-encodings.test.mjs test/js-tiktoken.test.mjs test/package-surface.test.mjs test/parity.test.mjs test/public-output.test.mjs test/registry.test.mjs",
+    "test:node": "npm run build && node --test test/bundle-analysis.test.mjs test/encoding-isolation.test.mjs test/isolated-bundles.test.mjs test/isolated-encodings.test.mjs test/js-tiktoken.test.mjs test/package-surface.test.mjs test/parity.test.mjs test/public-output.test.mjs test/registry.test.mjs test/worker-bundles.test.mjs",
     "typecheck": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {

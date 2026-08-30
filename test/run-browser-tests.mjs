@@ -41,7 +41,7 @@ async function findBrowser() {
   throw new Error("No supported local browser executable was found.");
 }
 
-async function runBrowser(browser, url, profile, outcome) {
+async function runBrowser(browser, url, profile, outcome, label) {
   const args = [
     "--headless=new",
     "--disable-background-networking",
@@ -85,7 +85,7 @@ async function runBrowser(browser, url, profile, outcome) {
       }),
     ]);
     if (status !== "passed") {
-      throw new Error(`Browser parity verification ${status}.`);
+      throw new Error(`Browser ${label} verification ${status}.`);
     }
   } finally {
     clearTimeout(timeout);
@@ -98,19 +98,31 @@ async function runBrowser(browser, url, profile, outcome) {
 }
 
 let resolveOutcome;
-const outcome = new Promise((resolveResult) => {
-  resolveOutcome = resolveResult;
-});
+let workerCheckpoint = false;
+const requestsAfterWorkerCheckpoint = [];
+
+function nextOutcome() {
+  return new Promise((resolveResult) => {
+    resolveOutcome = resolveResult;
+  });
+}
 
 const server = createServer(async (request, response) => {
   try {
     const pathname = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
+    if (pathname === "/__token_counter_browser_worker_checkpoint__") {
+      workerCheckpoint = true;
+      response.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
+      response.end("ready");
+      return;
+    }
     if (pathname === "/__token_counter_browser_passed__") {
       response.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
       response.end("ok");
       resolveOutcome("passed");
       return;
     }
+    if (workerCheckpoint) requestsAfterWorkerCheckpoint.push(pathname);
     if (pathname === "/__token_counter_browser_failed__") {
       response.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
       response.end("failed");
@@ -138,7 +150,7 @@ const server = createServer(async (request, response) => {
   }
 });
 
-const profile = await mkdtemp(join(tmpdir(), "token-counter-browser-"));
+const profiles = [];
 
 try {
   const browser = await findBrowser();
@@ -150,14 +162,27 @@ try {
   if (address === null || typeof address === "string") {
     throw new Error("Browser test server did not expose a local port.");
   }
-  await runBrowser(
-    browser,
-    `http://127.0.0.1:${address.port}/test/browser-parity.html`,
-    profile,
-    outcome,
-  );
-  process.stdout.write("browser-parity-ok\n");
+  for (const suite of [
+    { file: "browser-parity.html", label: "parity" },
+    { file: "browser-worker.html", label: "worker" },
+  ]) {
+    const profile = await mkdtemp(join(tmpdir(), "token-counter-browser-"));
+    profiles.push(profile);
+    await runBrowser(
+      browser,
+      `http://127.0.0.1:${address.port}/test/${suite.file}`,
+      profile,
+      nextOutcome(),
+      suite.label,
+    );
+  }
+  if (requestsAfterWorkerCheckpoint.length !== 0) {
+    throw new Error("Browser worker made a request after initialization.");
+  }
+  process.stdout.write("browser-parity-ok\nbrowser-worker-ok\n");
 } finally {
   await new Promise((resolveClosed) => server.close(resolveClosed));
-  await rm(profile, { recursive: true, force: true });
+  await Promise.all(
+    profiles.map((profile) => rm(profile, { recursive: true, force: true })),
+  );
 }
