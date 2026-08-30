@@ -1,0 +1,7 @@
+interface:
+  display_name: "Document Freshness"
+  short_description: "Keep local docs current; gate Wiki sync"
+  default_prompt: "Use $document-freshness to reconcile documentation with the source changes and update the GitHub Wiki only if I explicitly request it."
+
+policy:
+  allow_implicit_invocation: true

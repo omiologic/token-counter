@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Token counter browser registry verification</title>
+  </head>
+  <body>
+    <pre id="result" data-status="running">browser-registry-running</pre>
+    <script type="module">
+      const result = document.querySelector("#result");
+
+      try {
+        const { resolveTokenEncoding } = await import("../dist/registry.js");
+        const cases = [
+          [{ encoding: "gpt2" }, "gpt2"],
+          [{ provider: "openai", model: "gpt-4" }, "cl100k_base"],
+          [{ provider: "openai", model: "gpt-4.1" }, "o200k_base"],
+          [{ provider: "openai", model: "gpt-4o" }, "o200k_base"],
+          [{ provider: "openai", model: "gpt-4o-mini" }, "o200k_base"],
+          [
+            {
+              encoding: "p50k_base",
+              provider: "unknown-provider",
+              model: "unknown-model",
+            },
+            "p50k_base",
+          ],
+          [
+            {
+              fallbackEncoding: "r50k_base",
+              provider: "unknown-provider",
+              model: "unknown-model",
+            },
+            "r50k_base",
+          ],
+        ];
+
+        for (const [descriptor, expected] of cases) {
+          if (resolveTokenEncoding(descriptor) !== expected) {
+            throw new Error("browser registry result mismatch");
+          }
+        }
+
+        let failedSafely = false;
+        try {
+          resolveTokenEncoding({
+            provider: "private-provider-value",
+            model: "private-model-value",
+          });
+        } catch (error) {
+          failedSafely =
+            error instanceof Error &&
+            error.message ===
+              "Unsupported token counter selection. Provide a supported encoding or provider/model pair." &&
+            !error.message.includes("private-provider-value") &&
+            !error.message.includes("private-model-value");
+        }
+
+        if (!failedSafely) {
+          throw new Error("browser registry failure was not content-safe");
+        }
+
+        result.dataset.status = "passed";
+        result.textContent = "browser-registry-ok";
+      } catch {
+        result.dataset.status = "failed";
+        result.textContent = "browser-registry-failed";
+      }
+    </script>
+  </body>
+</html>

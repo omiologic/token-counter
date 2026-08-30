@@ -1,0 +1,208 @@
+{
+  "schemaVersion": 1,
+  "reference": {
+    "implementation": "openai/tiktoken",
+    "version": "0.14.0",
+    "specialTokenPolicy": "ordinary-text"
+  },
+  "encodings": [
+    "cl100k_base",
+    "gpt2",
+    "o200k_base",
+    "p50k_base",
+    "p50k_edit",
+    "r50k_base"
+  ],
+  "fixtures": [
+    {
+      "id": "empty",
+      "category": "empty",
+      "input": { "kind": "literal", "text": "" },
+      "expected": {
+        "cl100k_base": 0,
+        "gpt2": 0,
+        "o200k_base": 0,
+        "p50k_base": 0,
+        "p50k_edit": 0,
+        "r50k_base": 0
+      }
+    },
+    {
+      "id": "ascii-prose",
+      "category": "ascii",
+      "input": {
+        "kind": "literal",
+        "text": "Local token counts are deterministic preflight measurements."
+      },
+      "expected": {
+        "cl100k_base": 9,
+        "gpt2": 10,
+        "o200k_base": 9,
+        "p50k_base": 10,
+        "p50k_edit": 10,
+        "r50k_base": 10
+      }
+    },
+    {
+      "id": "source-code",
+      "category": "source-code",
+      "input": {
+        "kind": "literal",
+        "text": "export function add(a: number, b: number): number {\n  return a + b;\n}\n"
+      },
+      "expected": {
+        "cl100k_base": 20,
+        "gpt2": 24,
+        "o200k_base": 20,
+        "p50k_base": 24,
+        "p50k_edit": 24,
+        "r50k_base": 24
+      }
+    },
+    {
+      "id": "structured-json",
+      "category": "structured",
+      "input": {
+        "kind": "literal",
+        "text": "{\"model\":\"gpt-4o\",\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}"
+      },
+      "expected": {
+        "cl100k_base": 20,
+        "gpt2": 21,
+        "o200k_base": 21,
+        "p50k_base": 21,
+        "p50k_edit": 21,
+        "r50k_base": 21
+      }
+    },
+    {
+      "id": "structured-yaml",
+      "category": "structured",
+      "input": {
+        "kind": "literal",
+        "text": "model: gpt-4o\nmessages:\n  - role: user\n    content: hello\n"
+      },
+      "expected": {
+        "cl100k_base": 21,
+        "gpt2": 25,
+        "o200k_base": 21,
+        "p50k_base": 23,
+        "p50k_edit": 23,
+        "r50k_base": 25
+      }
+    },
+    {
+      "id": "structured-csv",
+      "category": "structured",
+      "input": {
+        "kind": "literal",
+        "text": "name,count,enabled\nalpha,12,true\nbeta,7,false\n"
+      },
+      "expected": {
+        "cl100k_base": 15,
+        "gpt2": 18,
+        "o200k_base": 15,
+        "p50k_base": 18,
+        "p50k_edit": 18,
+        "r50k_base": 18
+      }
+    },
+    {
+      "id": "unicode-combining",
+      "category": "unicode",
+      "input": {
+        "kind": "literal",
+        "text": "naïve café — é vs é; Ελληνικά; हिन्दी"
+      },
+      "expected": {
+        "cl100k_base": 26,
+        "gpt2": 34,
+        "o200k_base": 14,
+        "p50k_base": 34,
+        "p50k_edit": 34,
+        "r50k_base": 34
+      }
+    },
+    {
+      "id": "emoji-sequences",
+      "category": "emoji",
+      "input": {
+        "kind": "literal",
+        "text": "Tokens 🚀🧪👩🏽‍💻 family 👨‍👩‍👧‍👦 flags 🇺🇸🇯🇵"
+      },
+      "expected": {
+        "cl100k_base": 48,
+        "gpt2": 45,
+        "o200k_base": 34,
+        "p50k_base": 45,
+        "p50k_edit": 45,
+        "r50k_base": 45
+      }
+    },
+    {
+      "id": "mixed-language",
+      "category": "mixed-language",
+      "input": {
+        "kind": "literal",
+        "text": "Hello, 世界. مرحبا بالعالم. 안녕하세요. Привет мир."
+      },
+      "expected": {
+        "cl100k_base": 29,
+        "gpt2": 48,
+        "o200k_base": 16,
+        "p50k_base": 48,
+        "p50k_edit": 48,
+        "r50k_base": 48
+      }
+    },
+    {
+      "id": "special-token-text",
+      "category": "special-token",
+      "input": {
+        "kind": "literal",
+        "text": "prefix <|endoftext|> suffix"
+      },
+      "expected": {
+        "cl100k_base": 8,
+        "gpt2": 9,
+        "o200k_base": 9,
+        "p50k_base": 9,
+        "p50k_edit": 9,
+        "r50k_base": 9
+      }
+    },
+    {
+      "id": "large-repeated",
+      "category": "large-repeated",
+      "input": {
+        "kind": "repeat",
+        "text": "local token measurement\n",
+        "repetitions": 2048
+      },
+      "expected": {
+        "cl100k_base": 8192,
+        "gpt2": 8192,
+        "o200k_base": 8192,
+        "p50k_base": 8192,
+        "p50k_edit": 8192,
+        "r50k_base": 8192
+      }
+    },
+    {
+      "id": "large-nonrepeated",
+      "category": "large-nonrepeated",
+      "input": {
+        "kind": "numbered-lines",
+        "lines": 2048
+      },
+      "expected": {
+        "cl100k_base": 25624,
+        "gpt2": 25728,
+        "o200k_base": 25624,
+        "p50k_base": 25728,
+        "p50k_edit": 25728,
+        "r50k_base": 25728
+      }
+    }
+  ]
+}

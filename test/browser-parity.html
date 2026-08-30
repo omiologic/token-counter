@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Token counter browser parity verification</title>
+  </head>
+  <body>
+    <pre id="result" data-status="running">browser-parity-running</pre>
+    <script type="module">
+      const result = document.querySelector("#result");
+      const deny = () => {
+        throw new Error("runtime capability denied by test");
+      };
+      const originalConsole = {
+        debug: console.debug,
+        error: console.error,
+        info: console.info,
+        log: console.log,
+        warn: console.warn,
+      };
+      let consoleCalls = 0;
+
+      for (const method of Object.keys(originalConsole)) {
+        console[method] = () => {
+          consoleCalls += 1;
+        };
+      }
+
+      globalThis.fetch = deny;
+      if (globalThis.XMLHttpRequest) {
+        globalThis.XMLHttpRequest.prototype.open = deny;
+      }
+      globalThis.WebSocket = deny;
+      globalThis.EventSource = deny;
+      if (globalThis.Navigator?.prototype?.sendBeacon) {
+        globalThis.Navigator.prototype.sendBeacon = deny;
+      }
+      if (globalThis.Storage?.prototype?.setItem) {
+        globalThis.Storage.prototype.setItem = deny;
+      }
+      if (globalThis.indexedDB?.open) {
+        globalThis.indexedDB.open = deny;
+      }
+      if (globalThis.caches?.open) {
+        globalThis.caches.open = deny;
+      }
+
+      try {
+        const { runBrowserIsolationProof } = await import("../.test-browser/isolation.js");
+        const { runBrowserParity } = await import("../.test-browser/parity.js");
+        runBrowserIsolationProof();
+        runBrowserParity();
+        if (consoleCalls !== 0) {
+          throw new Error("Unexpected console output.");
+        }
+        result.dataset.status = "passed";
+        result.textContent = "browser-parity-ok";
+        globalThis.location.replace("/__token_counter_browser_passed__");
+      } catch {
+        result.dataset.status = "failed";
+        result.textContent = "browser-parity-failed";
+        globalThis.location.replace("/__token_counter_browser_failed__");
+      } finally {
+        Object.assign(console, originalConsole);
+      }
+    </script>
+  </body>
+</html>

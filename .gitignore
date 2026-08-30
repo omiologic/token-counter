@@ -1,0 +1,8 @@
+.DS_Store
+
+/_notes/
+/.agents/skills/context-governance/
+/.test-browser/
+/.test-package-*/
+/dist/
+/node_modules/
