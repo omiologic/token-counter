@@ -311,6 +311,20 @@ The committed suite covers:
 - one-rank-only browser bundles, trusted parity, and denied-network execution for every isolated encoding entry.
 - exact-version CDN-style artifacts, immutable cache headers, SHA-384 manifests, and equivalent vendored imports.
 
+An evaluation-only browser worker prototype also measures a sustained large
+nonrepeated workload without changing the public package surface:
+
+```sh
+npm run build
+node test/evaluation/evaluate-browser-worker.mjs
+```
+
+The recorded local Chrome result found a material responsiveness benefit and
+supports a separately planned opt-in worker surface. See the
+[browser worker evaluation](./_notes/worker-analysis/README.md) for the workload,
+payload and memory costs, and adoption boundary. Performance values are
+machine-specific evidence rather than test thresholds.
+
 The largest deterministic test input is 54,843 UTF-8 bytes, and every fixture is bounded below 64 KiB. The suite uses a generous browser timeout rather than a machine-speed assertion, avoiding flaky performance thresholds while still verifying completion within a fixed resource envelope.
 
 Reference provenance and reproduction instructions are recorded in [`test/fixtures/README.md`](./test/fixtures/README.md). Re-run the independent Python reference check with:
@@ -331,4 +345,8 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for the boundary design and security in
 
 ## Status
 
-The root, core, JavaScript adapter, and isolated encoding surfaces are verified locally for Node and browser runtimes. The package remains private and has no selected release version; verification does not authorize publication or release.
+The root, core, JavaScript adapter, and isolated encoding surfaces are verified
+locally for Node and browser runtimes. An opt-in browser worker surface is
+planned from measured evidence but is not implemented or exported. The package
+remains private and has no selected release version; verification does not
+authorize publication or release.

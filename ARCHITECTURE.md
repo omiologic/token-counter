@@ -173,7 +173,9 @@ export interface TokenCounterDescriptor {
 
 Additional APIs should be added only when real consumers require them.
 
-Possible later extensions include:
+Possible later extensions, only after a concrete consumer demonstrates a need
+that cannot be met by composing `count()` with the existing descriptor and
+encoding resolver, include:
 
 ```ts
 export interface TokenMeasurement {
@@ -186,7 +188,54 @@ export interface AsyncTokenCounter {
 }
 ```
 
+The safe-measurement-metadata evaluation found that a preflight observability
+event containing a count and encoding can already be assembled by the consumer:
+the count comes from `count()` and the stable encoding identifier comes from
+deterministic selection. Do not duplicate caller-available metadata in the
+counting result without additional evidence. If richer measurement output is
+later justified, prefer an additive operation and preserve
+`TokenCounter.count(text): number` compatibility.
+
 An asynchronous interface should not be introduced merely because an implementation performs unnecessary runtime I/O. The preferred tokenizer path remains synchronous and local.
+
+Async initialization and async counting are separate concerns. A locally
+bundled implementation that only needs asynchronous setup should expose an
+explicit factory returning `Promise<TokenCounter>`; once initialization
+finishes, `count()` remains synchronous. Initialization failure must reject
+before a counter is returned, must use content-free errors, and must never fall
+back to a remote asset. Each factory call creates an independent ready counter;
+an implementation may share only immutable local code or rank data, never input
+text or token material.
+
+An implementation whose count necessarily crosses an asynchronous boundary,
+such as a browser worker, cannot satisfy `TokenCounter`. The browser-worker
+evaluation demonstrated a material responsiveness benefit for twelve
+consecutive counts of the bounded 54,843-byte nonrepeated fixture, so a
+separately planned optional worker surface is justified for that class of
+consumer workload. The smallest core candidate remains a separate
+application-owned contract:
+
+```ts
+export interface AsyncTokenCounter {
+  count(text: string): Promise<number>;
+}
+```
+
+The concrete adapter must also make resource ownership explicit. The measured
+prototype nearly doubled tokenizer payload and aggregate browser memory when
+the main-thread and worker bundles were both loaded. A worker-only consumer
+must therefore be able to avoid main-thread tokenizer initialization. A worker
+surface also needs a documented close/termination operation and must
+reject pending and future requests with content-free errors after closure.
+Cancellation should be added only when the adopted runtime demonstrates a need
+and defines whether it cancels computation or merely discards the result; it
+must not be assumed by the minimal interface. Initialization should occur once
+per adapter instance rather than being hidden in every `count()` call. Browser
+and Node implementations must retain equivalent counting semantics and the same
+offline capability boundary even when their lifecycle mechanics differ.
+
+No current exported adapter implements either extension. These are compatibility
+rules for the planned worker implementation, not a supported public API.
 
 ## `js-tiktoken` adapter
 
