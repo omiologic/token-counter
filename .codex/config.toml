@@ -1,0 +1,8 @@
+# Keep the source repository as the primary workspace and grant the adjacent
+# GitHub Wiki checkout the same workspace-write access.
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+writable_roots = ["../token-counter.wiki"]
+network_access = true

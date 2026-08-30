@@ -53,9 +53,9 @@ Recommended invariants:
 
 A server should still perform its own final secret scan before a complete model-bound payload is sent to an external provider.
 
-## Proposed API
+## Public API
 
-Keep the public surface deliberately small:
+The public surface is deliberately small and does not expose tokenizer dependency types:
 
 ```ts
 export interface TokenCounter {
@@ -63,26 +63,153 @@ export interface TokenCounter {
 }
 
 export interface TokenCounterDescriptor {
+  encoding?: TokenEncoding;
+  fallbackEncoding?: TokenEncoding;
   provider?: string;
   model?: string;
-  encoding: string;
 }
 ```
 
-An adapter can implement the contract without exposing its tokenizer dependency:
+For the convenient root API, create a counter from any supported descriptor:
 
 ```ts
-import type { TokenCounter } from "@omiologic/token-counter";
+import { createTokenCounter } from "@omiologic/token-counter";
 
-export class JsTiktokenCounter implements TokenCounter {
-  count(text: string): number {
-    // js-tiktoken remains an implementation detail.
-    return 0;
-  }
-}
+const counter = createTokenCounter({
+  provider: "openai",
+  model: "gpt-4o",
+});
+const tokens = counter.count("sanitized model-bound text");
 ```
 
-Consumers should depend on `TokenCounter`, not directly on `js-tiktoken`.
+The root also preserves direct access to the registry and JavaScript adapter.
+Consumers that want explicit payload control can use the subpaths instead:
+
+```ts
+import type { TokenCounter } from "@omiologic/token-counter/core";
+import { resolveTokenEncoding } from "@omiologic/token-counter/core";
+import { JsTiktokenCounter } from "@omiologic/token-counter/js";
+
+const encoding = resolveTokenEncoding({
+  provider: "openai",
+  model: "gpt-4o",
+});
+const counter: TokenCounter = new JsTiktokenCounter(encoding);
+```
+
+`@omiologic/token-counter/core` contains only application-owned contracts and
+deterministic selection primitives. It has no runtime import of `js-tiktoken`
+or tokenizer encoding data. `@omiologic/token-counter/js` adds the audited
+JavaScript adapter and its locally bundled data. The root composes both surfaces
+for convenience.
+
+### Isolated encoding entry points
+
+Browser bundles that need one known encoding can import a static encoding
+subpath. Each subpath exports the same zero-argument factory and returns the
+application-owned `TokenCounter` interface:
+
+```ts
+import { createTokenCounter } from "@omiologic/token-counter/encodings/o200k_base";
+
+const counter = createTokenCounter();
+const tokens = counter.count("sanitized model-bound text");
+```
+
+| Encoding | Import path |
+| --- | --- |
+| `cl100k_base` | `@omiologic/token-counter/encodings/cl100k_base` |
+| `gpt2` | `@omiologic/token-counter/encodings/gpt2` |
+| `o200k_base` | `@omiologic/token-counter/encodings/o200k_base` |
+| `p50k_base` | `@omiologic/token-counter/encodings/p50k_base` |
+| `p50k_edit` | `@omiologic/token-counter/encodings/p50k_edit` |
+| `r50k_base` | `@omiologic/token-counter/encodings/r50k_base` |
+
+An isolated entry statically imports `js-tiktoken/lite` and only its selected
+rank module. It does not expose the dependency's rank object or token arrays.
+The rank data is installed with the pinned dependency and is included by an ESM
+bundler; initialization and counting never download data.
+
+Import only the encoding subpaths a bundle needs. Importing multiple isolated
+entries includes each selected vocabulary, while importing the root or `/js`
+keeps the convenient all-encoding behavior. Static entries also let build tools
+cache or split encoding payloads independently. For local hosting, vendor the
+resolved package and dependency artifacts together and serve versioned assets
+with immutable caching. Do not substitute a runtime rank-data URL or a floating
+production version.
+
+### Immutable CDN and vendored layout
+
+The verified static layout maps the same npm specifiers to standalone browser
+ESM files beneath an exact-version prefix:
+
+| npm specifier | Exact-version artifact path |
+| --- | --- |
+| `@omiologic/token-counter` | `/npm/@omiologic/token-counter@<exact-version>/index.js` |
+| `@omiologic/token-counter/core` | `/npm/@omiologic/token-counter@<exact-version>/core.js` |
+| `@omiologic/token-counter/js` | `/npm/@omiologic/token-counter@<exact-version>/js.js` |
+| `@omiologic/token-counter/encodings/<encoding>` | `/npm/@omiologic/token-counter@<exact-version>/encodings/<encoding>.js` |
+
+`<exact-version>` must be replaced by an explicitly selected immutable package
+version. This repository has not selected one and does not publish or endorse a
+particular CDN origin. A CDN or local build pipeline should derive these files
+from the matching packed npm artifact and its pinned dependencies; the library
+must never fetch code or rank data after the module has loaded.
+
+Static sites can keep their application imports identical to npm by mapping the
+specifiers to exact URLs:
+
+```html
+<script type="importmap">
+{
+  "imports": {
+    "@omiologic/token-counter/core":
+      "https://cdn.example/npm/@omiologic/token-counter@<exact-version>/core.js",
+    "@omiologic/token-counter/encodings/o200k_base":
+      "https://cdn.example/npm/@omiologic/token-counter@<exact-version>/encodings/o200k_base.js"
+  }
+}
+</script>
+```
+
+`cdn.example` is a non-operational placeholder. Do not use `latest`, version
+ranges, redirects to a moving version, or a runtime rank-data endpoint in
+production examples.
+
+For local vendoring, copy the entire exact-version directory without changing
+its contents and point the same import-map keys at local paths. Serve versioned
+artifacts and their `integrity.json` manifest with
+`Cache-Control: public, max-age=31536000, immutable`; serve HTML and mutable
+import maps with revalidation or a short cache lifetime. Verify each artifact's
+SHA-384 value before deployment. Where the browser loading mechanism supports
+Subresource Integrity for the module entry, use the same `sha384-...` value;
+otherwise enforce the manifest during the trusted build or vendoring step.
+
+The local verification materializes this layout from a fixture-only version of
+the packed package, checks every hash, copies and imports the vendored files,
+and runs every surface in a browser. It also verifies that isolated encoding
+artifacts contain only the selected rank module and that counting makes no
+request after the explicit module-load checkpoint.
+
+Selection is case-sensitive and deterministic:
+
+1. A supported explicit `encoding` takes precedence over provider/model hints and fallback.
+2. Otherwise, an exact supported `provider` and `model` pair is resolved.
+3. Otherwise, a caller-supplied supported `fallbackEncoding` is used.
+4. Unknown or partial input fails with a content-free error; the library never guesses.
+
+Supported explicit encodings are `cl100k_base`, `gpt2`, `o200k_base`, `p50k_base`, `p50k_edit`, and `r50k_base`.
+
+The initial model mappings are:
+
+| Provider | Model | Encoding |
+| --- | --- | --- |
+| `openai` | `gpt-4` | `cl100k_base` |
+| `openai` | `gpt-4.1` | `o200k_base` |
+| `openai` | `gpt-4o` | `o200k_base` |
+| `openai` | `gpt-4o-mini` | `o200k_base` |
+
+Consumers should depend on `TokenCounter`, not directly on `js-tiktoken`. Special-token marker strings are counted as ordinary text; the package does not expose dependency special-token controls or token arrays.
 
 ## Browser and server usage
 
@@ -111,6 +238,8 @@ Server
 
 Client counting is useful for UX. Server counting is suitable for preflight enforcement. Provider-reported usage remains the post-invocation source of truth.
 
+The emitted ESM targets ES2022 and supports Node.js 18 or newer. Browser consumers should use an ESM-capable bundler so the package and its locally bundled encoding data are included in the application build. Initialization and counting perform no runtime downloads or remote lookups.
+
 ## Why `js-tiktoken`
 
 The initial adapter uses `js-tiktoken` because it fits a shared JavaScript/TypeScript stack and can run locally in both browser and server environments.
@@ -135,34 +264,60 @@ preflight estimate != provider-reported usage
 
 Applications should record both numeric values when useful and reconcile estimate error without persisting model-bound content.
 
-## Planned package shape
+## Package shape
 
 ```text
 token-counter/
 ├── src/
 │   ├── index.ts
+│   ├── core.ts
+│   ├── js.ts
 │   ├── token-counter.ts
 │   ├── registry.ts
+│   ├── encodings/
+│   │   └── <encoding>.ts
 │   └── adapters/
-│       └── js-tiktoken.ts
+│       ├── js-tiktoken.ts
+│       └── js-tiktoken-lite.ts
 ├── test/
 │   ├── fixtures/
-│   └── js-tiktoken.test.ts
+│   ├── reference/
+│   └── *.test.mjs
 ├── README.md
 └── ARCHITECTURE.md
 ```
 
-## Testing expectations
+## Verification
 
-The implementation should include:
+Run the deterministic Node and browser suites from the committed lockfile:
+
+```sh
+npm ci --ignore-scripts
+npm run typecheck
+npm test
+```
+
+`npm test` builds the package, runs Node tests with runtime network entry points denied, bundles the same fixture suite for a locally installed headless Chrome/Chromium/Edge browser, and runs browser checks with network, logging, and persistence APIs denied. The browser test server binds only to `127.0.0.1` for module delivery.
+
+The committed suite covers:
 
 - deterministic known-answer token fixtures;
 - Unicode and mixed-language fixtures;
 - empty and large-input cases;
-- parity checks against a trusted reference where practical;
+- parity checks for every supported encoding against official `openai/tiktoken==0.14.0`;
 - browser and Node runtime tests;
-- tests that counting works with network access unavailable;
-- tests ensuring public results contain counts/metadata rather than input text.
+- network-denied initialization and counting;
+- public results, errors, logs, declarations, and exports that contain no input text or token arrays.
+- one-rank-only browser bundles, trusted parity, and denied-network execution for every isolated encoding entry.
+- exact-version CDN-style artifacts, immutable cache headers, SHA-384 manifests, and equivalent vendored imports.
+
+The largest deterministic test input is 54,843 UTF-8 bytes, and every fixture is bounded below 64 KiB. The suite uses a generous browser timeout rather than a machine-speed assertion, avoiding flaky performance thresholds while still verifying completion within a fixed resource envelope.
+
+Reference provenance and reproduction instructions are recorded in [`test/fixtures/README.md`](./test/fixtures/README.md). Re-run the independent Python reference check with:
+
+```sh
+/tmp/token-counter-reference/bin/python test/reference/verify_tiktoken.py
+```
 
 ## Dependency policy
 
@@ -176,4 +331,4 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for the boundary design and security in
 
 ## Status
 
-Architecture/bootstrap phase. The initial intended implementation is a small TypeScript package with a `js-tiktoken` adapter and no runtime network dependency.
+The root, core, JavaScript adapter, and isolated encoding surfaces are verified locally for Node and browser runtimes. The package remains private and has no selected release version; verification does not authorize publication or release.

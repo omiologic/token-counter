@@ -1,0 +1,37 @@
+# Git metadata is protected by the workspace-write sandbox. These rules allow
+# Git only when the target repository is named explicitly with `git -C`.
+prefix_rule(
+    pattern = ["git", "-C", "."],
+    decision = "allow",
+    justification = "Allow Git commands for the token-counter source repository.",
+    match = [
+        "git -C . status --short --branch",
+        "git -C . diff",
+        "git -C . add README.md",
+        "git -C . commit -m update",
+        "git -C . push origin main",
+    ],
+    not_match = [
+        "git status",
+        "git -C .. status",
+        "git -C ../token-counter.wiki status",
+    ],
+)
+
+prefix_rule(
+    pattern = ["git", "-C", "../token-counter.wiki"],
+    decision = "allow",
+    justification = "Allow Git commands for the adjacent token-counter GitHub Wiki repository.",
+    match = [
+        "git -C ../token-counter.wiki status --short --branch",
+        "git -C ../token-counter.wiki diff",
+        "git -C ../token-counter.wiki add Home.md",
+        "git -C ../token-counter.wiki commit -m update",
+        "git -C ../token-counter.wiki push origin master",
+    ],
+    not_match = [
+        "git status",
+        "git -C . status",
+        "git -C ../other.wiki status",
+    ],
+)
