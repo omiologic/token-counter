@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "reference": {
     "implementation": "openai/tiktoken",
     "version": "0.14.0",
@@ -169,6 +169,322 @@
         "p50k_base": 9,
         "p50k_edit": 9,
         "r50k_base": 9
+      }
+    },
+    {
+      "id": "pathological-nul",
+      "category": "pathological-unicode",
+      "input": { "kind": "literal", "text": "\u0000" },
+      "expected": {
+        "cl100k_base": 1,
+        "gpt2": 1,
+        "o200k_base": 1,
+        "p50k_base": 1,
+        "p50k_edit": 1,
+        "r50k_base": 1
+      }
+    },
+    {
+      "id": "pathological-bom",
+      "category": "pathological-unicode",
+      "input": { "kind": "utf16-code-units", "codeUnits": [65279] },
+      "expected": {
+        "cl100k_base": 1,
+        "gpt2": 3,
+        "o200k_base": 1,
+        "p50k_base": 3,
+        "p50k_edit": 3,
+        "r50k_base": 3
+      }
+    },
+    {
+      "id": "pathological-line-endings",
+      "category": "pathological-unicode",
+      "input": { "kind": "literal", "text": "CR\rLF\nCRLF\r\nEND" },
+      "expected": {
+        "cl100k_base": 8,
+        "gpt2": 11,
+        "o200k_base": 8,
+        "p50k_base": 11,
+        "p50k_edit": 11,
+        "r50k_base": 11
+      }
+    },
+    {
+      "id": "pathological-whitespace-only",
+      "category": "pathological-unicode",
+      "input": {
+        "kind": "utf16-code-units",
+        "codeUnits": [32, 9, 11, 12, 160, 8195, 10]
+      },
+      "expected": {
+        "cl100k_base": 7,
+        "gpt2": 8,
+        "o200k_base": 6,
+        "p50k_base": 8,
+        "p50k_edit": 8,
+        "r50k_base": 8
+      }
+    },
+    {
+      "id": "pathological-nbsp-boundary",
+      "category": "pathological-unicode",
+      "input": {
+        "kind": "utf16-code-units",
+        "codeUnits": [65, 160, 66]
+      },
+      "expected": {
+        "cl100k_base": 3,
+        "gpt2": 3,
+        "o200k_base": 3,
+        "p50k_base": 3,
+        "p50k_edit": 3,
+        "r50k_base": 3
+      }
+    },
+    {
+      "id": "pathological-nfc-precomposed",
+      "category": "pathological-unicode",
+      "input": {
+        "kind": "utf16-code-units",
+        "codeUnits": [99, 97, 102, 233]
+      },
+      "expected": {
+        "cl100k_base": 2,
+        "gpt2": 3,
+        "o200k_base": 2,
+        "p50k_base": 3,
+        "p50k_edit": 3,
+        "r50k_base": 3
+      }
+    },
+    {
+      "id": "pathological-nfd-combining",
+      "category": "pathological-unicode",
+      "input": {
+        "kind": "utf16-code-units",
+        "codeUnits": [99, 97, 102, 101, 769]
+      },
+      "expected": {
+        "cl100k_base": 3,
+        "gpt2": 4,
+        "o200k_base": 3,
+        "p50k_base": 4,
+        "p50k_edit": 4,
+        "r50k_base": 4
+      }
+    },
+    {
+      "id": "pathological-emoji-zwj-modifier",
+      "category": "pathological-unicode",
+      "input": { "kind": "literal", "text": "👩🏽‍💻" },
+      "expected": {
+        "cl100k_base": 10,
+        "gpt2": 10,
+        "o200k_base": 7,
+        "p50k_base": 10,
+        "p50k_edit": 10,
+        "r50k_base": 10
+      }
+    },
+    {
+      "id": "pathological-regional-indicators",
+      "category": "pathological-unicode",
+      "input": { "kind": "literal", "text": "🇺🇸🇯🇵" },
+      "expected": {
+        "cl100k_base": 12,
+        "gpt2": 12,
+        "o200k_base": 8,
+        "p50k_base": 12,
+        "p50k_edit": 12,
+        "r50k_base": 12
+      }
+    },
+    {
+      "id": "pathological-zero-width-controls",
+      "category": "pathological-unicode",
+      "input": {
+        "kind": "utf16-code-units",
+        "codeUnits": [65, 8203, 66, 8204, 67, 8205, 68, 8288, 69]
+      },
+      "expected": {
+        "cl100k_base": 11,
+        "gpt2": 12,
+        "o200k_base": 9,
+        "p50k_base": 12,
+        "p50k_edit": 12,
+        "r50k_base": 12
+      }
+    },
+    {
+      "id": "pathological-bidi-controls",
+      "category": "pathological-unicode",
+      "input": {
+        "kind": "utf16-code-units",
+        "codeUnits": [65, 8206, 66, 8207, 67, 8234, 68, 8236, 69, 8294, 70, 8297]
+      },
+      "expected": {
+        "cl100k_base": 17,
+        "gpt2": 17,
+        "o200k_base": 14,
+        "p50k_base": 17,
+        "p50k_edit": 17,
+        "r50k_base": 17
+      }
+    },
+    {
+      "id": "pathological-lone-high-surrogate",
+      "category": "pathological-unicode",
+      "input": { "kind": "utf16-code-units", "codeUnits": [55296] },
+      "expected": {
+        "cl100k_base": 1,
+        "gpt2": 1,
+        "o200k_base": 1,
+        "p50k_base": 1,
+        "p50k_edit": 1,
+        "r50k_base": 1
+      }
+    },
+    {
+      "id": "pathological-lone-low-surrogate",
+      "category": "pathological-unicode",
+      "input": { "kind": "utf16-code-units", "codeUnits": [56320] },
+      "expected": {
+        "cl100k_base": 1,
+        "gpt2": 1,
+        "o200k_base": 1,
+        "p50k_base": 1,
+        "p50k_edit": 1,
+        "r50k_base": 1
+      }
+    },
+    {
+      "id": "pathological-embedded-high-surrogate",
+      "category": "pathological-unicode",
+      "input": {
+        "kind": "utf16-code-units",
+        "codeUnits": [65, 55296, 66]
+      },
+      "expected": {
+        "cl100k_base": 3,
+        "gpt2": 3,
+        "o200k_base": 3,
+        "p50k_base": 3,
+        "p50k_edit": 3,
+        "r50k_base": 3
+      }
+    },
+    {
+      "id": "pathological-long-token",
+      "category": "pathological-unicode",
+      "input": { "kind": "repeat", "text": "a", "repetitions": 4096 },
+      "expected": {
+        "cl100k_base": 512,
+        "gpt2": 1024,
+        "o200k_base": 512,
+        "p50k_base": 1024,
+        "p50k_edit": 1024,
+        "r50k_base": 1024
+      }
+    },
+    {
+      "id": "pathological-newline-heavy",
+      "category": "pathological-unicode",
+      "input": { "kind": "repeat", "text": "\r\n\n", "repetitions": 1024 },
+      "expected": {
+        "cl100k_base": 1024,
+        "gpt2": 2048,
+        "o200k_base": 1024,
+        "p50k_base": 2048,
+        "p50k_edit": 2048,
+        "r50k_base": 2048
+      }
+    },
+    {
+      "id": "pathological-escaped-json",
+      "category": "pathological-unicode",
+      "input": {
+        "kind": "literal",
+        "text": "{\"text\":\"line\\nbreak\",\"unicode\":\"\\uD800\",\"slash\":\"\\\\\"}"
+      },
+      "expected": {
+        "cl100k_base": 17,
+        "gpt2": 21,
+        "o200k_base": 18,
+        "p50k_base": 21,
+        "p50k_edit": 21,
+        "r50k_base": 21
+      }
+    },
+    {
+      "id": "pathological-code",
+      "category": "pathological-unicode",
+      "input": {
+        "kind": "literal",
+        "text": "function edge(value) { return \"\\u0000\\n\" + value; }\n"
+      },
+      "expected": {
+        "cl100k_base": 16,
+        "gpt2": 18,
+        "o200k_base": 16,
+        "p50k_base": 18,
+        "p50k_edit": 18,
+        "r50k_base": 18
+      }
+    },
+    {
+      "id": "pathological-entities",
+      "category": "pathological-unicode",
+      "input": { "kind": "literal", "text": "&amp;&#x1F4A9;&#0;&notanentity;" },
+      "expected": {
+        "cl100k_base": 15,
+        "gpt2": 21,
+        "o200k_base": 15,
+        "p50k_base": 21,
+        "p50k_edit": 21,
+        "r50k_base": 21
+      }
+    },
+    {
+      "id": "pathological-base64-like",
+      "category": "pathological-unicode",
+      "input": { "kind": "literal", "text": "AAECAwQFBgcICQoLDA0ODw==" },
+      "expected": {
+        "cl100k_base": 16,
+        "gpt2": 15,
+        "o200k_base": 15,
+        "p50k_base": 15,
+        "p50k_edit": 15,
+        "r50k_base": 15
+      }
+    },
+    {
+      "id": "pathological-placeholder",
+      "category": "pathological-unicode",
+      "input": {
+        "kind": "literal",
+        "text": "{{user.name}} ${TOKEN} <PLACEHOLDER> [REDACTED]"
+      },
+      "expected": {
+        "cl100k_base": 17,
+        "gpt2": 19,
+        "o200k_base": 18,
+        "p50k_base": 19,
+        "p50k_edit": 19,
+        "r50k_base": 19
+      }
+    },
+    {
+      "id": "pathological-embedded-nul",
+      "category": "pathological-unicode",
+      "input": { "kind": "literal", "text": "prefix\u0000suffix" },
+      "expected": {
+        "cl100k_base": 3,
+        "gpt2": 4,
+        "o200k_base": 3,
+        "p50k_base": 4,
+        "p50k_edit": 4,
+        "r50k_base": 4
       }
     },
     {

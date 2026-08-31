@@ -389,12 +389,16 @@ npm test
 The committed suite covers:
 
 - deterministic known-answer token fixtures;
-- Unicode and mixed-language fixtures;
+- Unicode, mixed-language, and pathological JavaScript-string fixtures,
+  including exact lone-surrogate code-unit recipes and distinct normalization
+  forms;
 - empty and large-input cases;
 - parity checks for every supported encoding against official `openai/tiktoken==0.14.0`;
 - browser and Node runtime tests;
 - network-denied initialization and counting;
 - public results, errors, logs, declarations, and exports that contain no input text or token arrays.
+- content-free mismatch metadata limited to fixture identifiers, encodings, and
+  numeric expected/actual counts.
 - one-rank-only browser bundles, trusted parity, and denied-network execution for every isolated encoding entry.
 - exact-version CDN-style artifacts, immutable cache headers, SHA-384 manifests, and equivalent vendored imports.
 - worker readiness, concurrency, lifecycle, failure, close, offline, output-safety, and per-encoding trusted parity.
@@ -440,6 +444,12 @@ Reference provenance and reproduction instructions are recorded in [`test/fixtur
 ```sh
 /tmp/token-counter-reference/bin/python test/reference/verify_tiktoken.py
 ```
+
+Counting applies no package-owned Unicode normalization, rejection,
+sanitization, or repair. Precomposed and combining forms and lone UTF-16
+surrogates are measured as the JavaScript strings supplied by the caller, with
+expected counts defined by the pinned official reference rather than an
+invented package policy.
 
 ## Compatibility and semver baseline
 

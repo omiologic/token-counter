@@ -18,15 +18,20 @@ export function runBrowserParity() {
   assert(createTokenCounter({ provider: "openai", model: "gpt-4o" }).count("hello world") === 2);
 
   for (const encoding of fixtureData.encodings) {
-    const counter = new JsTiktokenCounter(encoding);
+    const counters = [
+      createTokenCounter({ encoding }),
+      new JsTiktokenCounter(encoding),
+    ];
 
     for (const fixture of fixtureData.fixtures) {
       const text = materializeFixture(fixture.input);
       assert(new TextEncoder().encode(text).byteLength <= MAX_FIXTURE_BYTES);
-      const actual = counter.count(text);
-      assert(typeof actual === "number");
-      assert(Number.isInteger(actual));
-      assert(actual === fixture.expected[encoding]);
+      for (const counter of counters) {
+        const actual = counter.count(text);
+        assert(typeof actual === "number");
+        assert(Number.isSafeInteger(actual));
+        assert(actual === fixture.expected[encoding]);
+      }
     }
   }
 

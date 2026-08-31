@@ -163,6 +163,7 @@ const fixtureData = ${JSON.stringify(fixtureData)};
 function materializeFixture(input) {
   if (input.kind === "literal") return input.text;
   if (input.kind === "repeat") return input.text.repeat(input.repetitions);
+  if (input.kind === "utf16-code-units") return String.fromCharCode(...input.codeUnits);
   if (input.kind === "numbered-lines") {
     return Array.from({ length: input.lines }, (_, index) =>
       "row-" + index + ": alpha-" + (index % 17) + ", beta-" + ((index * 7) % 101) + "\\n"

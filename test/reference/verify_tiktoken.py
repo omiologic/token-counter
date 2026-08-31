@@ -19,6 +19,8 @@ def materialize(input_recipe: dict[str, object]) -> str:
         return str(input_recipe["text"])
     if kind == "repeat":
         return str(input_recipe["text"]) * int(input_recipe["repetitions"])
+    if kind == "utf16-code-units":
+        return "".join(chr(int(code_unit)) for code_unit in input_recipe["codeUnits"])
     if kind == "numbered-lines":
         lines = int(input_recipe["lines"])
         return "".join(

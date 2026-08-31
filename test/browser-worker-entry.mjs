@@ -33,7 +33,11 @@ async function expectRejection(promise, expectedMessage, privateMarker) {
 }
 
 export async function runBrowserWorkerVerification(checkpoint) {
-  const privateMarker = "private-browser-worker-marker";
+  const surrogateFixture = fixtureData.fixtures.find(
+    ({ id }) => id === "pathological-embedded-high-surrogate",
+  );
+  assert(surrogateFixture !== undefined);
+  const privateMarker = `${materializeFixture(surrogateFixture.input)}\u0000private`;
   const counters = Object.fromEntries(
     await Promise.all(
       Object.entries(FACTORIES).map(async ([encoding, factory]) => [

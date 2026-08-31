@@ -19,9 +19,10 @@ function denyNetwork() {
 }
 
 test(
-  "matches trusted counts for every encoding with runtime network denied",
+  "root, /js, and isolated surfaces match trusted counts with runtime network denied",
   { timeout: 120_000 },
   async () => {
+    const consoleCalls = [];
     const originals = {
       fetch: globalThis.fetch,
       httpGet: http.get,
@@ -31,6 +32,12 @@ test(
       netConnect: net.connect,
       netCreateConnection: net.createConnection,
       tlsConnect: tls.connect,
+      console: Object.fromEntries(
+        ["debug", "error", "info", "log", "warn"].map((method) => [
+          method,
+          console[method],
+        ]),
+      ),
     };
 
     globalThis.fetch = denyNetwork;
@@ -41,24 +48,63 @@ test(
     net.connect = denyNetwork;
     net.createConnection = denyNetwork;
     tls.connect = denyNetwork;
+    for (const method of Object.keys(originals.console)) {
+      console[method] = (...args) => consoleCalls.push([method, ...args]);
+    }
 
     try {
-      const { JsTiktokenCounter } = await import("../dist/index.js");
+      const { createTokenCounter } = await import("@omiologic/token-counter");
+      const { JsTiktokenCounter } = await import(
+        "@omiologic/token-counter/js"
+      );
+
+      const fixtureById = new Map(
+        fixtureData.fixtures.map((fixture) => [fixture.id, fixture]),
+      );
+      const precomposed = materializeFixture(
+        fixtureById.get("pathological-nfc-precomposed").input,
+      );
+      const combining = materializeFixture(
+        fixtureById.get("pathological-nfd-combining").input,
+      );
+      assert.notEqual(precomposed, combining, "normalization fixtures differ");
+      assert.equal(precomposed.normalize("NFD"), combining, "normalization pair");
+      assert.deepEqual(
+        Array.from(
+          materializeFixture(
+            fixtureById.get("pathological-embedded-high-surrogate").input,
+          ),
+          (character) => character.charCodeAt(0),
+        ),
+        [65, 55296, 66],
+        "embedded surrogate code units",
+      );
 
       for (const encoding of fixtureData.encodings) {
-        const counter = new JsTiktokenCounter(encoding);
+        const isolated = await import(
+          `@omiologic/token-counter/encodings/${encoding}`
+        );
+        const counters = [
+          ["root", createTokenCounter({ encoding })],
+          ["js", new JsTiktokenCounter(encoding)],
+          ["isolated", isolated.createTokenCounter()],
+        ];
 
         for (const fixture of fixtureData.fixtures) {
           const text = materializeFixture(fixture.input);
           const byteLength = new TextEncoder().encode(text).byteLength;
           assert.equal(byteLength <= MAX_FIXTURE_BYTES, true, fixture.id);
 
-          const actual = counter.count(text);
-          assert.equal(typeof actual, "number", fixture.id);
-          assert.equal(Number.isInteger(actual), true, fixture.id);
-          assert.equal(actual, fixture.expected[encoding], fixture.id);
+          for (const [surface, counter] of counters) {
+            const metadata = `${surface}/${encoding}/${fixture.id}`;
+            const actual = counter.count(text);
+            assert.equal(typeof actual, "number", metadata);
+            assert.equal(Number.isSafeInteger(actual), true, metadata);
+            assert.equal(actual, fixture.expected[encoding], metadata);
+          }
         }
       }
+      assert.deepEqual(consoleCalls, []);
     } finally {
       globalThis.fetch = originals.fetch;
       http.get = originals.httpGet;
@@ -68,6 +114,7 @@ test(
       net.connect = originals.netConnect;
       net.createConnection = originals.netCreateConnection;
       tls.connect = originals.tlsConnect;
+      Object.assign(console, originals.console);
     }
   },
 );

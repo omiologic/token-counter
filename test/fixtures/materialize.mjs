@@ -4,6 +4,8 @@ export function materializeFixture(input) {
       return input.text;
     case "repeat":
       return input.text.repeat(input.repetitions);
+    case "utf16-code-units":
+      return String.fromCharCode(...input.codeUnits);
     case "numbered-lines":
       return Array.from(
         { length: input.lines },

@@ -34,9 +34,11 @@ release version, date, channel, registry, CDN provider, or deployment target.
   audited dependency source and capabilities, and bundled all tokenizer data
   locally.
 - Added deterministic known-answer, Unicode, mixed-language, special-token,
-  bounded large-input, browser/Node parity, denied-network, and public-output
-  checks for all six encodings against the pinned official Python `tiktoken`
-  reference.
+  pathological JavaScript-string, bounded large-input, browser/Node parity,
+  denied-network, and public-output checks for all six encodings against the
+  pinned official Python `tiktoken` reference. The pathological corpus covers
+  exact lone-surrogate code units, normalization pairs, format controls, and
+  representative transport-like inputs without package-owned normalization.
 - Added browser-worker readiness, concurrency, lifecycle, close, payload
   isolation, offline-counting, and content-free failure checks. Closing a
   worker rejects pending and future counts without returning input text.

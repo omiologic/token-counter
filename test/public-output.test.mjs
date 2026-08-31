@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+import { materializeFixture } from "./fixtures/materialize.mjs";
+
 const ENCODINGS = [
   "cl100k_base",
   "gpt2",
@@ -15,6 +17,9 @@ const API_BASELINE = JSON.parse(
     new URL("./fixtures/public-api-baseline.json", import.meta.url),
     "utf8",
   ),
+);
+const TOKEN_FIXTURES = JSON.parse(
+  await readFile(new URL("./fixtures/token-counts.json", import.meta.url), "utf8"),
 );
 
 function normalizeDeclaration(contents) {
@@ -99,11 +104,15 @@ test("public declaration closure matches the compatibility baseline", async () =
   }
 });
 
-test("results, errors, and console output remain content-safe", async () => {
+test("pathological input results, errors, and console output remain content-safe", async () => {
   const { JsTiktokenCounter, resolveTokenEncoding } = await import(
     "../dist/index.js"
   );
-  const privateInput = "private-input-marker";
+  const surrogateFixture = TOKEN_FIXTURES.fixtures.find(
+    ({ id }) => id === "pathological-embedded-high-surrogate",
+  );
+  assert.ok(surrogateFixture, "pathological fixture is present");
+  const privateInput = `${materializeFixture(surrogateFixture.input)}\u0000private`;
   const calls = [];
   const originalMethods = {
     debug: console.debug,

@@ -33,6 +33,9 @@
       const materialize = (input) => {
         if (input.kind === "literal") return input.text;
         if (input.kind === "repeat") return input.text.repeat(input.repetitions);
+        if (input.kind === "utf16-code-units") {
+          return String.fromCharCode(...input.codeUnits);
+        }
         if (input.kind === "numbered-lines") {
           return Array.from(
             { length: input.lines },

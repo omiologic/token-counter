@@ -405,6 +405,8 @@ Maintain deterministic fixtures for:
 - Unicode;
 - emoji;
 - mixed-language content;
+- pathological JavaScript strings, including lone UTF-16 surrogates,
+  normalization pairs, format controls, embedded NUL, and transport-like text;
 - large repeated and non-repeated inputs;
 - special-token edge cases relevant to supported encodings.
 
@@ -413,6 +415,12 @@ Maintain deterministic fixtures for:
 Where practical, compare expected counts against a trusted reference implementation for the same encoding.
 
 For OpenAI-compatible encodings, official `tiktoken` output is an appropriate reference oracle.
+
+Fixture materialization must preserve exact caller-visible JavaScript code
+units. The package does not normalize, reject, sanitize, or define independent
+repair semantics for pathological strings; precomposed and combining forms
+remain distinct fixtures, and trusted-reference behavior defines their
+expected counts.
 
 ### Runtime parity
 
@@ -425,6 +433,11 @@ Tests should demonstrate that initialization and counting succeed with network a
 ### Output safety
 
 Tests should ensure public result objects contain numeric measurements/approved metadata rather than the original input text.
+
+Failure and mismatch reporting should be limited to safe fixture identifiers,
+encoding identifiers, and numeric metadata. It must not include fixture text or
+token arrays, including when the input contains lone surrogates or control
+characters.
 
 ## Package layout
 
