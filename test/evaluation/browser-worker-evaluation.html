@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="data:," />
+    <title>Browser worker evaluation</title>
+  </head>
+  <body>
+    <pre>browser-worker-evaluation-running</pre>
+    <script type="module">
+      const originalFetch = globalThis.fetch;
+      const originalConsole = {};
+      let consoleCalls = 0;
+      for (const method of ["debug", "error", "info", "log", "warn"]) {
+        originalConsole[method] = console[method];
+        console[method] = () => {
+          consoleCalls += 1;
+        };
+      }
+
+      const report = async (result) => {
+        Object.assign(console, originalConsole);
+        globalThis.fetch = originalFetch;
+        await originalFetch("/__worker_evaluation_result__", {
+          body: JSON.stringify(result),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        });
+      };
+      const deny = () => {
+        throw new Error("Runtime capability denied by evaluation.");
+      };
+      const memory = () => performance.memory?.usedJSHeapSize ?? null;
+      const aggregateMemory = async () => {
+        return { bytes: memory(), source: "performance.memory" };
+      };
+      const materialize = (input) => {
+        if (input.kind === "literal") return input.text;
+        if (input.kind === "repeat") return input.text.repeat(input.repetitions);
+        if (input.kind === "numbered-lines") {
+          return Array.from(
+            { length: input.lines },
+            (_, index) =>
+              `row-${index}: alpha-${index % 17}, beta-${(index * 7) % 101}\n`,
+          ).join("");
+        }
+        throw new Error("Unsupported fixture recipe.");
+      };
+      const median = (values) => {
+        const sorted = [...values].sort((left, right) => left - right);
+        return sorted[Math.floor(sorted.length / 2)];
+      };
+      const heartbeat = async (operation) => {
+        const gaps = [];
+        let previous = performance.now();
+        const timer = setInterval(() => {
+          const current = performance.now();
+          gaps.push(current - previous);
+          previous = current;
+        }, 5);
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        gaps.length = 0;
+        previous = performance.now();
+        const started = performance.now();
+        const value = await operation();
+        const operationMilliseconds = performance.now() - started;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        clearInterval(timer);
+        return {
+          heartbeat_max_gap_milliseconds: Math.max(...gaps),
+          operation_milliseconds: operationMilliseconds,
+          value,
+        };
+      };
+
+      let workerCounter;
+      try {
+        const fixtureData = await originalFetch("/fixtures/token-counts.json").then(
+          (response) => response.json(),
+        );
+        const memoryBefore = await aggregateMemory();
+        const mainStarted = performance.now();
+        const main = await import("/main.js");
+        const mainInitializationMilliseconds = performance.now() - mainStarted;
+        const memoryAfterMainInitialization = await aggregateMemory();
+
+        const workerStarted = performance.now();
+        const workerApi = await import("/worker-api.js");
+        workerCounter = await workerApi.createTokenCounter();
+        const workerInitializationMilliseconds = performance.now() - workerStarted;
+        const memoryAfterWorkerInitialization = await aggregateMemory();
+
+        await originalFetch("/__worker_evaluation_checkpoint__");
+        globalThis.fetch = deny;
+        if (globalThis.XMLHttpRequest) globalThis.XMLHttpRequest.prototype.open = deny;
+        globalThis.WebSocket = deny;
+        globalThis.EventSource = deny;
+        if (globalThis.Navigator?.prototype?.sendBeacon) {
+          globalThis.Navigator.prototype.sendBeacon = deny;
+        }
+        if (globalThis.Storage?.prototype?.setItem) {
+          globalThis.Storage.prototype.setItem = deny;
+        }
+        if (globalThis.indexedDB?.open) globalThis.indexedDB.open = deny;
+        if (globalThis.caches?.open) globalThis.caches.open = deny;
+
+        let parityChecks = 0;
+        for (const fixture of fixtureData.fixtures) {
+          const text = materialize(fixture.input);
+          const mainCount = main.count(text);
+          const workerCount = await workerCounter.count(text);
+          if (
+            mainCount !== fixture.expected.o200k_base ||
+            workerCount !== mainCount
+          ) {
+            throw new Error("Parity failed.");
+          }
+          parityChecks += 1;
+        }
+
+        const privateMarker = "private-browser-worker-evaluation-marker";
+        try {
+          await workerCounter.count({ privateMarker });
+          throw new Error("Invalid worker input was accepted.");
+        } catch (error) {
+          if (
+            !(error instanceof Error) ||
+            error.message !== "Token counting failed." ||
+            error.message.includes(privateMarker)
+          ) {
+            throw new Error("Worker exposed a content-bearing failure.");
+          }
+        }
+
+        const workloadFixture = fixtureData.fixtures.find(
+          ({ id }) => id === "large-nonrepeated",
+        );
+        const workload = materialize(workloadFixture.input);
+        const iterations = 12;
+        const mainDurations = [];
+        const mainResponsiveness = await heartbeat(async () => {
+          let count = 0;
+          for (let index = 0; index < iterations; index += 1) {
+            const started = performance.now();
+            count = main.count(workload);
+            mainDurations.push(performance.now() - started);
+          }
+          return count;
+        });
+
+        const workerRoundTripDurations = [];
+        const workerResponsiveness = await heartbeat(async () => {
+          let count = 0;
+          for (let index = 0; index < iterations; index += 1) {
+            const started = performance.now();
+            const response = await workerCounter.count(workload);
+            workerRoundTripDurations.push(performance.now() - started);
+            count = response;
+          }
+          return count;
+        });
+        if (
+          mainResponsiveness.value !== workloadFixture.expected.o200k_base ||
+          workerResponsiveness.value !== workloadFixture.expected.o200k_base
+        ) {
+          throw new Error("Workload count diverged.");
+        }
+
+        if (consoleCalls !== 0) {
+          throw new Error("Unexpected console output.");
+        }
+        const memoryAfterEvaluation = await aggregateMemory();
+        workerCounter.close();
+        workerCounter = undefined;
+
+        await report({
+          initialization: {
+            main_milliseconds: mainInitializationMilliseconds,
+            worker_milliseconds: workerInitializationMilliseconds,
+          },
+          memory: {
+            aggregate_after_evaluation_bytes: memoryAfterEvaluation.bytes,
+            aggregate_after_main_initialization_bytes:
+              memoryAfterMainInitialization.bytes,
+            aggregate_after_worker_initialization_bytes:
+              memoryAfterWorkerInitialization.bytes,
+            aggregate_before_bytes: memoryBefore.bytes,
+            aggregate_source: memoryBefore.source,
+          },
+          parity_checks: parityChecks,
+          responsiveness: {
+            iterations,
+            main: {
+              count_milliseconds_median: median(mainDurations),
+              heartbeat_max_gap_milliseconds:
+                mainResponsiveness.heartbeat_max_gap_milliseconds,
+              operation_milliseconds: mainResponsiveness.operation_milliseconds,
+            },
+            worker: {
+              heartbeat_max_gap_milliseconds:
+                workerResponsiveness.heartbeat_max_gap_milliseconds,
+              operation_milliseconds: workerResponsiveness.operation_milliseconds,
+              round_trip_milliseconds_median: median(workerRoundTripDurations),
+            },
+          },
+        });
+      } catch {
+        workerCounter?.close();
+        await report({ failed: true });
+      }
+    </script>
+  </body>
+</html>

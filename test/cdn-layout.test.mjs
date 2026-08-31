@@ -34,6 +34,17 @@ test("packed artifacts materialize as an immutable vendorable layout", async () 
       if (surface.subpath.startsWith("./encodings/")) {
         const encoding = surface.subpath.slice("./encodings/".length);
         assert.deepEqual(metadata.rank_modules, [`${encoding}.js`], encoding);
+      } else if (surface.subpath.startsWith("./workers/")) {
+        const encoding = surface.subpath.slice("./workers/".length);
+        assert.deepEqual(metadata.rank_modules, [], encoding);
+        assert.ok(metadata.worker);
+        const workerContents = await readFile(
+          join(artifactRoot, surface.workerArtifact),
+        );
+        assert.equal(metadata.worker.integrity, sha384(workerContents), encoding);
+        assert.equal(metadata.worker.bytes, workerContents.byteLength, encoding);
+        assert.deepEqual(metadata.worker.external_imports, [], encoding);
+        assert.deepEqual(metadata.worker.rank_modules, [`${encoding}.js`], encoding);
       }
     }
 
@@ -61,6 +72,14 @@ test("packed artifacts materialize as an immutable vendorable layout", async () 
         pathToFileURL(join(vendoredRoot, surface.artifact))
       );
       assert.equal(isolatedApi.createTokenCounter().count("hello"), 1);
+    }
+    for (const surface of CDN_SURFACES.filter(({ subpath }) =>
+      subpath.startsWith("./workers/"),
+    )) {
+      const workerApi = await import(
+        pathToFileURL(join(vendoredRoot, surface.artifact))
+      );
+      assert.equal(typeof workerApi.createTokenCounter, "function");
     }
   } finally {
     await rm(temporaryRoot, { force: true, recursive: true });

@@ -20,6 +20,14 @@ Consumers depend on an application-owned abstraction:
 export interface TokenCounter {
   count(text: string): number;
 }
+
+export interface AsyncTokenCounter {
+  count(text: string): Promise<number>;
+}
+
+export interface BrowserWorkerTokenCounter extends AsyncTokenCounter {
+  close(): void;
+}
 ```
 
 Model-specific tokenization remains behind adapters.
@@ -123,6 +131,31 @@ The library does not own reconciliation policy, billing, or pricing tables.
 
 Keeping these boundaries narrow makes the package reusable and easier to audit.
 
+## Current support boundary
+
+The verified package surface consists of the root, `/core`, `/js`, six static
+`/encodings/<encoding>` entries, and six optional browser-only
+`/workers/<encoding>` entries. The synchronous surfaces support Node.js 18 or
+newer and ESM-capable browser builds. Worker factories require dedicated module
+workers, resolve only after their matching local asset is ready, and place
+termination ownership on the caller through `close()`.
+
+Exact-version CDN-style and vendored layouts are verified delivery patterns,
+not a hosted service owned by the library. A consumer or distributor derives
+the artifacts from one packed package, verifies their SHA-384 manifest, and
+keeps each worker factory beside the same-version worker asset. Runtime rank
+downloads, floating versions, and remote counting remain outside the boundary.
+
+Richer measurement results, WASM, additional tokenizer adapters, and worker
+cancellation are not supported surfaces. Their evaluations are deferred until
+a concrete consumer establishes a requirement that existing composition cannot
+satisfy. Provider invocation, provider usage reconciliation, billing, pricing,
+secret scanning, prompt construction, and context-budget policy remain
+unsupported package responsibilities.
+
+This support boundary describes verified behavior only. It does not select a
+version, promise publication, or authorize a release or deployment.
+
 ## Component model
 
 ```text
@@ -157,7 +190,7 @@ The registry is optional infrastructure. Simple consumers may instantiate an ada
 
 ## Public contract
 
-The first release should prefer a minimal API.
+The public API remains deliberately narrow.
 
 ```ts
 export interface TokenCounter {
@@ -165,28 +198,65 @@ export interface TokenCounter {
 }
 
 export interface TokenCounterDescriptor {
+  fallbackEncoding?: TokenEncoding;
   provider?: string;
   model?: string;
-  encoding: string;
+  encoding?: TokenEncoding;
 }
 ```
 
 Additional APIs should be added only when real consumers require them.
 
-Possible later extensions include:
+Possible later extensions, only after a concrete consumer demonstrates a need
+that cannot be met by composing `count()` with the existing descriptor and
+encoding resolver, include:
 
 ```ts
 export interface TokenMeasurement {
   tokens: number;
   encoding: string;
 }
-
-export interface AsyncTokenCounter {
-  count(text: string): Promise<number>;
-}
 ```
 
+The safe-measurement-metadata evaluation found that a preflight observability
+event containing a count and encoding can already be assembled by the consumer:
+the count comes from `count()` and the stable encoding identifier comes from
+deterministic selection. Do not duplicate caller-available metadata in the
+counting result without additional evidence. If richer measurement output is
+later justified, prefer an additive operation and preserve
+`TokenCounter.count(text): number` compatibility.
+
 An asynchronous interface should not be introduced merely because an implementation performs unnecessary runtime I/O. The preferred tokenizer path remains synchronous and local.
+
+Async initialization and async counting are separate concerns. A locally
+bundled implementation that only needs asynchronous setup should expose an
+explicit factory returning `Promise<TokenCounter>`; once initialization
+finishes, `count()` remains synchronous. Initialization failure must reject
+before a counter is returned, must use content-free errors, and must never fall
+back to a remote asset. Each factory call creates an independent ready counter;
+an implementation may share only immutable local code or rank data, never input
+text or token material.
+
+An implementation whose count necessarily crosses an asynchronous boundary,
+such as a browser worker, cannot satisfy `TokenCounter`. The optional browser
+worker therefore implements the separate application-owned `AsyncTokenCounter`
+contract and adds explicit `close()` ownership through
+`BrowserWorkerTokenCounter`.
+
+Each encoding-specific worker factory loads one matching local module-worker
+asset and resolves only after it is ready. Its main-thread factory contains no
+tokenizer rank data, so a worker-only consumer avoids duplicate main-thread
+tokenizer initialization. The measured comparison still duplicates the rank
+only because it deliberately loads both sync and worker paths side by side.
+Initialization, worker, count, and close failures are content-free. `close()`
+terminates the worker and rejects pending and future requests deterministically.
+Cancellation should be added only when the adopted runtime demonstrates a need
+and defines whether it cancels computation or merely discards the result; it
+must not be assumed by the minimal interface. Initialization should occur once
+per adapter instance rather than being hidden in every `count()` call. The
+worker is browser-only, while trusted fixture parity preserves equivalent
+counting semantics with Node and synchronous browser paths. Counting remains
+offline after the explicit worker initialization boundary.
 
 ## `js-tiktoken` adapter
 
@@ -364,13 +434,18 @@ Initial direction:
 token-counter/
 ├── src/
 │   ├── index.ts
+│   ├── async-token-counter.ts
 │   ├── token-counter.ts
 │   ├── registry.ts
-│   └── adapters/
-│       └── js-tiktoken.ts
+│   ├── adapters/
+│   │   ├── browser-worker.ts
+│   │   └── js-tiktoken.ts
+│   └── workers/
+│       └── <encoding>.{ts,worker.ts}
 ├── test/
 │   ├── fixtures/
 │   └── js-tiktoken.test.ts
+├── CHANGELOG.md
 ├── README.md
 ├── ARCHITECTURE.md
 ├── package.json
@@ -407,3 +482,9 @@ Changes to this package should preserve these invariants:
 8. Provider actual usage is never redefined as local tokenizer truth.
 
 If a proposed feature violates these rules, it likely belongs in a consuming context-observability, security, provider, or orchestration layer instead.
+
+The public compatibility boundary is enumerated in the
+[public API baseline](./test/fixtures/public-api-baseline.json) and classified
+under the semver guidance in [README.md](./README.md#compatibility-and-semver-baseline).
+Generated bundle layout, worker protocol internals, and performance evidence do
+not become architecture contracts merely because tests inspect them.

@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="data:," />
+    <title>Token counter browser worker verification</title>
+  </head>
+  <body>
+    <pre id="result" data-status="running">browser-worker-running</pre>
+    <script type="module">
+      const result = document.querySelector("#result");
+      const originalFetch = globalThis.fetch;
+      const originalConsole = {};
+      let consoleCalls = 0;
+      for (const method of ["debug", "error", "info", "log", "warn"]) {
+        originalConsole[method] = console[method];
+        console[method] = () => { consoleCalls += 1; };
+      }
+
+      const deny = () => {
+        throw new Error("Runtime capability denied by browser worker test.");
+      };
+
+      try {
+        const { runBrowserWorkerVerification } = await import(
+          "../.test-browser/workers.js"
+        );
+        await runBrowserWorkerVerification(async () => {
+          const response = await originalFetch(
+            "/__token_counter_browser_worker_checkpoint__",
+          );
+          if (!response.ok) throw new Error("Worker checkpoint failed.");
+          globalThis.fetch = deny;
+          if (globalThis.XMLHttpRequest) {
+            globalThis.XMLHttpRequest.prototype.open = deny;
+          }
+          globalThis.WebSocket = deny;
+          globalThis.EventSource = deny;
+          if (globalThis.Navigator?.prototype?.sendBeacon) {
+            globalThis.Navigator.prototype.sendBeacon = deny;
+          }
+          if (globalThis.Storage?.prototype?.setItem) {
+            globalThis.Storage.prototype.setItem = deny;
+          }
+          if (globalThis.indexedDB?.open) globalThis.indexedDB.open = deny;
+          if (globalThis.caches?.open) globalThis.caches.open = deny;
+        });
+        if (consoleCalls !== 0) throw new Error("Unexpected console output.");
+        result.dataset.status = "passed";
+        result.textContent = "browser-worker-ok";
+        globalThis.location.replace(
+          "/__token_counter_browser_passed__?suite=worker",
+        );
+      } catch {
+        result.dataset.status = "failed";
+        result.textContent = "browser-worker-failed";
+        globalThis.location.replace(
+          "/__token_counter_browser_failed__?suite=worker",
+        );
+      } finally {
+        Object.assign(console, originalConsole);
+        globalThis.fetch = originalFetch;
+      }
+    </script>
+  </body>
+</html>

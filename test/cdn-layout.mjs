@@ -35,60 +35,82 @@ export const CDN_SURFACES = [
     source: `dist/encodings/${encoding}.js`,
     subpath: `./encodings/${encoding}`,
   })),
+  ...[
+    "cl100k_base",
+    "gpt2",
+    "o200k_base",
+    "p50k_base",
+    "p50k_edit",
+    "r50k_base",
+  ].map((encoding) => ({
+    artifact: `workers/${encoding}.js`,
+    source: `dist/workers/${encoding}.js`,
+    subpath: `./workers/${encoding}`,
+    workerArtifact: `workers/${encoding}.worker.js`,
+    workerSource: `dist/workers/${encoding}.worker.js`,
+  })),
 ];
 
 function sha384(contents) {
   return `sha384-${createHash("sha384").update(contents).digest("base64")}`;
 }
 
-export async function materializeCdnLayout(temporaryRoot) {
+export async function materializeCdnLayout(temporaryRoot, options = {}) {
   const stagingRoot = join(temporaryRoot, "staging");
   const packedRoot = join(temporaryRoot, "packed");
   const siteRoot = join(temporaryRoot, "site");
+  await mkdir(packedRoot, { recursive: true });
+  let packageRoot = options.packageRoot;
+  let packResult;
+  if (packageRoot === undefined) {
+    await mkdir(stagingRoot, { recursive: true });
+    await cp(join(ROOT, "dist"), join(stagingRoot, "dist"), {
+      recursive: true,
+    });
+
+    const packageJson = JSON.parse(
+      await readFile(join(ROOT, "package.json"), "utf8"),
+    );
+    packageJson.version = FIXTURE_VERSION;
+    await writeFile(
+      join(stagingRoot, "package.json"),
+      `${JSON.stringify(packageJson, null, 2)}\n`,
+      "utf8",
+    );
+
+    const { stdout } = await execFileAsync(
+      "npm",
+      ["pack", stagingRoot, "--json", "--pack-destination", packedRoot],
+      { cwd: ROOT },
+    );
+    [packResult] = JSON.parse(stdout);
+    if (packResult === undefined) {
+      throw new Error("Fixture package was not packed.");
+    }
+    await execFileAsync(
+      "tar",
+      ["-xzf", join(packedRoot, packResult.filename), "-C", packedRoot],
+      { cwd: ROOT },
+    );
+    packageRoot = join(packedRoot, "package");
+    await symlink(
+      join(ROOT, "node_modules"),
+      join(packageRoot, "node_modules"),
+      "dir",
+    );
+  }
+  const packageManifest = JSON.parse(
+    await readFile(join(packageRoot, "package.json"), "utf8"),
+  );
+  const fixtureVersion = packageManifest.version ?? FIXTURE_VERSION;
+  const basePath = `/npm/@omiologic/token-counter@${fixtureVersion}`;
   const artifactRoot = join(
     siteRoot,
     "npm",
     "@omiologic",
-    `token-counter@${FIXTURE_VERSION}`,
+    `token-counter@${fixtureVersion}`,
   );
-
-  await mkdir(stagingRoot, { recursive: true });
-  await mkdir(packedRoot, { recursive: true });
   await mkdir(artifactRoot, { recursive: true });
-  await cp(join(ROOT, "dist"), join(stagingRoot, "dist"), {
-    recursive: true,
-  });
-
-  const packageJson = JSON.parse(
-    await readFile(join(ROOT, "package.json"), "utf8"),
-  );
-  packageJson.version = FIXTURE_VERSION;
-  await writeFile(
-    join(stagingRoot, "package.json"),
-    `${JSON.stringify(packageJson, null, 2)}\n`,
-    "utf8",
-  );
-
-  const { stdout } = await execFileAsync(
-    "npm",
-    ["pack", stagingRoot, "--json", "--pack-destination", packedRoot],
-    { cwd: ROOT },
-  );
-  const [packResult] = JSON.parse(stdout);
-  if (packResult === undefined) {
-    throw new Error("Fixture package was not packed.");
-  }
-  await execFileAsync(
-    "tar",
-    ["-xzf", join(packedRoot, packResult.filename), "-C", packedRoot],
-    { cwd: ROOT },
-  );
-  const packageRoot = join(packedRoot, "package");
-  await symlink(
-    join(ROOT, "node_modules"),
-    join(packageRoot, "node_modules"),
-    "dir",
-  );
 
   const artifacts = {};
   for (const surface of CDN_SURFACES) {
@@ -113,21 +135,50 @@ export async function materializeCdnLayout(temporaryRoot) {
     const externalImports = Object.values(result.metafile.outputs)
       .flatMap(({ imports }) => imports.map(({ path }) => path))
       .sort();
-    artifacts[surface.subpath] = {
+    const metadata = {
       bytes: contents.byteLength,
       external_imports: externalImports,
       integrity: sha384(contents),
-      path: `${CDN_BASE_PATH}/${surface.artifact}`,
+      path: `${basePath}/${surface.artifact}`,
       rank_modules: rankModules,
       source_export: surface.source,
     };
+    if (surface.workerSource !== undefined) {
+      const workerOutfile = join(artifactRoot, surface.workerArtifact);
+      const workerResult = await build({
+        bundle: true,
+        entryPoints: [join(packageRoot, surface.workerSource)],
+        format: "esm",
+        legalComments: "none",
+        metafile: true,
+        minify: true,
+        outfile: workerOutfile,
+        platform: "browser",
+        target: "es2022",
+      });
+      const workerContents = await readFile(workerOutfile);
+      metadata.worker = {
+        bytes: workerContents.byteLength,
+        external_imports: Object.values(workerResult.metafile.outputs)
+          .flatMap(({ imports }) => imports.map(({ path }) => path))
+          .sort(),
+        integrity: sha384(workerContents),
+        path: `${basePath}/${surface.workerArtifact}`,
+        rank_modules: Object.keys(workerResult.metafile.inputs)
+          .filter((path) => path.includes("/js-tiktoken/dist/ranks/"))
+          .map((path) => path.slice(path.lastIndexOf("/") + 1))
+          .sort(),
+        source: surface.workerSource,
+      };
+    }
+    artifacts[surface.subpath] = metadata;
   }
 
   const integrityManifest = {
     schema_version: 1,
     package: "@omiologic/token-counter",
-    version: FIXTURE_VERSION,
-    base_path: CDN_BASE_PATH,
+    version: fixtureVersion,
+    base_path: basePath,
     artifacts,
   };
   await writeFile(
@@ -135,7 +186,11 @@ export async function materializeCdnLayout(temporaryRoot) {
     `${JSON.stringify(integrityManifest, null, 2)}\n`,
     "utf8",
   );
-  await writeFile(join(siteRoot, "index.html"), browserFixtureHtml(), "utf8");
+  await writeFile(
+    join(siteRoot, "index.html"),
+    browserFixtureHtml(basePath),
+    "utf8",
+  );
   await writeFile(
     join(temporaryRoot, "package.json"),
     '{"type":"module"}\n',
@@ -144,6 +199,7 @@ export async function materializeCdnLayout(temporaryRoot) {
 
   return {
     artifactRoot,
+    basePath,
     integrityManifest,
     packResult,
     packageRoot,
@@ -151,11 +207,11 @@ export async function materializeCdnLayout(temporaryRoot) {
   };
 }
 
-function browserFixtureHtml() {
+function browserFixtureHtml(basePath = CDN_BASE_PATH) {
   const surfaceUrls = Object.fromEntries(
     CDN_SURFACES.map(({ artifact, subpath }) => [
       subpath,
-      `${CDN_BASE_PATH}/${artifact}`,
+      `${basePath}/${artifact}`,
     ]),
   );
 
@@ -176,6 +232,10 @@ function browserFixtureHtml() {
       try {
         if (!(surface in urls)) throw new Error("Unknown fixture surface.");
         const publicApi = await import(urls[surface]);
+        let workerCounter;
+        if (surface.startsWith("./workers/")) {
+          workerCounter = await publicApi.createTokenCounter();
+        }
         const loadedResponse = await fetch("/__token_counter_cdn_modules_loaded__?surface=" + encodeURIComponent(surface));
         if (!loadedResponse.ok) throw new Error("Load checkpoint failed.");
 
@@ -199,6 +259,9 @@ function browserFixtureHtml() {
           if (publicApi.resolveTokenEncoding({ provider: "openai", model: "gpt-4" }) !== "cl100k_base") throw new Error("Core failed.");
         } else if (surface === "./js") {
           if (new publicApi.JsTiktokenCounter("cl100k_base").count("hello") !== 1) throw new Error("JavaScript adapter failed.");
+        } else if (surface.startsWith("./workers/")) {
+          if (await workerCounter.count("hello") !== 1) throw new Error("Worker failed.");
+          workerCounter.close();
         } else if (publicApi.createTokenCounter().count("hello") !== 1) {
           throw new Error("Isolated encoding failed.");
         }

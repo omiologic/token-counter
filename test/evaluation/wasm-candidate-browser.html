@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="data:," />
+    <title>WASM candidate evaluation</title>
+  </head>
+  <body>
+    <pre>wasm-candidate-evaluation-running</pre>
+    <script type="module">
+      const adapter = new URLSearchParams(location.search).get("adapter");
+      const originalFetch = globalThis.fetch;
+      const originalConsole = {};
+      let consoleCalls = 0;
+      for (const method of ["debug", "error", "info", "log", "warn"]) {
+        originalConsole[method] = console[method];
+        console[method] = () => {
+          consoleCalls += 1;
+        };
+      }
+
+      const report = (result) => {
+        Object.assign(console, originalConsole);
+        globalThis.fetch = originalFetch;
+        const encoded = btoa(JSON.stringify(result));
+        location.replace(`/__wasm_evaluation_result__?data=${encodeURIComponent(encoded)}`);
+      };
+
+      const deny = () => {
+        throw new Error("runtime capability denied by evaluation");
+      };
+      const memory = () => performance.memory?.usedJSHeapSize ?? null;
+      const materialize = (input) => {
+        if (input.kind === "literal") return input.text;
+        if (input.kind === "repeat") return input.text.repeat(input.repetitions);
+        if (input.kind === "numbered-lines") {
+          return Array.from(
+            { length: input.lines },
+            (_, index) =>
+              `row-${index}: alpha-${index % 17}, beta-${(index * 7) % 101}\n`,
+          ).join("");
+        }
+        throw new Error("Unsupported fixture recipe.");
+      };
+
+      try {
+        if (adapter !== "js" && adapter !== "wasm") {
+          throw new Error("Unknown adapter.");
+        }
+        const fixtureData = await originalFetch("/fixtures/token-counts.json").then(
+          (response) => response.json(),
+        );
+        const memoryBefore = memory();
+        const initializedAt = performance.now();
+        let count;
+        let close = () => undefined;
+        let wasmLinearMemoryBytes = 0;
+
+        if (adapter === "js") {
+          const baseline = await import("/baseline.js");
+          count = (text) => {
+            try {
+              return baseline.count(text);
+            } catch {
+              throw new Error("Token counting failed.");
+            }
+          };
+        } else {
+          const [api, ranks, wasmResponse] = await Promise.all([
+            import("/candidate/lite/tiktoken_bg.js"),
+            import("/candidate/encoders/o200k_base.js"),
+            originalFetch("/candidate/lite/tiktoken_bg.wasm"),
+          ]);
+          if (!wasmResponse.ok) throw new Error("Local WASM asset was unavailable.");
+          const bytes = await wasmResponse.arrayBuffer();
+          const instantiated = await WebAssembly.instantiate(bytes, {
+            "./tiktoken_bg.js": api,
+          });
+          api.__wbg_set_wasm(instantiated.instance.exports);
+          const encoder = new api.Tiktoken(
+            ranks.default.bpe_ranks,
+            ranks.default.special_tokens,
+            ranks.default.pat_str,
+          );
+          wasmLinearMemoryBytes = instantiated.instance.exports.memory.buffer.byteLength;
+          count = (text) => {
+            try {
+              return encoder.encode(text, [], []).length;
+            } catch {
+              throw new Error("Token counting failed.");
+            }
+          };
+          close = () => encoder.free();
+        }
+
+        const initializationMilliseconds = performance.now() - initializedAt;
+        const memoryAfterInitialization = memory();
+        await originalFetch(`/__wasm_evaluation_checkpoint__?adapter=${adapter}`);
+
+        globalThis.fetch = deny;
+        if (globalThis.XMLHttpRequest) globalThis.XMLHttpRequest.prototype.open = deny;
+        globalThis.WebSocket = deny;
+        globalThis.EventSource = deny;
+        if (globalThis.Navigator?.prototype?.sendBeacon) {
+          globalThis.Navigator.prototype.sendBeacon = deny;
+        }
+        if (globalThis.Storage?.prototype?.setItem) {
+          globalThis.Storage.prototype.setItem = deny;
+        }
+        if (globalThis.indexedDB?.open) globalThis.indexedDB.open = deny;
+        if (globalThis.caches?.open) globalThis.caches.open = deny;
+
+        let parityChecks = 0;
+        for (const fixture of fixtureData.fixtures) {
+          const actual = count(materialize(fixture.input));
+          if (actual !== fixture.expected.o200k_base) {
+            throw new Error(`Parity failed for ${fixture.id}.`);
+          }
+          parityChecks += 1;
+        }
+
+        const privateMarker = "private-browser-wasm-evaluation-marker";
+        if (!Number.isInteger(count(privateMarker))) {
+          throw new Error("Counter returned a non-integer result.");
+        }
+        try {
+          count({ privateMarker });
+          throw new Error("Counter accepted a non-string input.");
+        } catch (error) {
+          if (
+            !(error instanceof Error) ||
+            error.message !== "Token counting failed." ||
+            error.message.includes(privateMarker)
+          ) {
+            throw new Error("Counter exposed a content-bearing error.");
+          }
+        }
+
+        const steadyState = [];
+        for (const fixture of fixtureData.fixtures.filter(({ id }) =>
+          ["large-repeated", "large-nonrepeated"].includes(id),
+        )) {
+          const text = materialize(fixture.input);
+          for (let index = 0; index < 3; index += 1) count(text);
+          const started = performance.now();
+          let lastCount = 0;
+          for (let index = 0; index < 10; index += 1) lastCount = count(text);
+          const elapsed = performance.now() - started;
+          if (lastCount !== fixture.expected.o200k_base) {
+            throw new Error("Benchmark parity failed.");
+          }
+          steadyState.push({
+            bytes: new TextEncoder().encode(text).byteLength,
+            fixture_id: fixture.id,
+            iterations: 10,
+            milliseconds_per_count: elapsed / 10,
+            tokens: lastCount,
+          });
+        }
+
+        const memoryAfterBenchmark = memory();
+        close();
+        if (consoleCalls !== 0) throw new Error("Unexpected console output.");
+        report({
+          adapter,
+          initialization_milliseconds: initializationMilliseconds,
+          memory_after_benchmark_bytes:
+            memoryBefore === null || memoryAfterBenchmark === null
+              ? null
+              : memoryAfterBenchmark - memoryBefore,
+          memory_after_initialization_bytes:
+            memoryBefore === null || memoryAfterInitialization === null
+              ? null
+              : memoryAfterInitialization - memoryBefore,
+          parity_checks: parityChecks,
+          steady_state: steadyState,
+          wasm_linear_memory_bytes: wasmLinearMemoryBytes,
+        });
+      } catch {
+        report({ adapter, failed: true });
+      }
+    </script>
+  </body>
+</html>

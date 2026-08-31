@@ -12,6 +12,7 @@ import {
 import { promisify } from "node:util";
 import { join, resolve } from "node:path";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 
 const execFileAsync = promisify(execFile);
 const ROOT = resolve(new URL("..", import.meta.url).pathname);
@@ -23,6 +24,38 @@ const ENCODINGS = [
   "p50k_edit",
   "r50k_base",
 ];
+const API_BASELINE = JSON.parse(
+  await readFile(
+    new URL("./fixtures/public-api-baseline.json", import.meta.url),
+    "utf8",
+  ),
+);
+
+function declarationExports(contents) {
+  const values = new Set();
+  const typeOnly = new Set();
+  for (const match of contents.matchAll(
+    /export\s+declare\s+(?:class|const|function|let|var)\s+([A-Za-z_$][\w$]*)/g,
+  )) {
+    values.add(match[1]);
+  }
+  for (const match of contents.matchAll(/export\s+(?!type\s)\{([^}]+)\}/gs)) {
+    for (const entry of match[1].split(",")) {
+      const name = entry.trim().split(/\s+as\s+/).at(-1);
+      if (name) values.add(name);
+    }
+  }
+  for (const match of contents.matchAll(/export\s+type\s+\{([^}]+)\}/gs)) {
+    for (const entry of match[1].split(",")) {
+      const name = entry.trim().split(/\s+as\s+/).at(-1);
+      if (name) typeOnly.add(name);
+    }
+  }
+  return {
+    typeOnly: [...typeOnly].sort(),
+    values: [...values].sort(),
+  };
+}
 
 async function withPackedPackage(run) {
   const temporaryRoot = await mkdtemp(join(ROOT, ".test-package-"));
@@ -82,22 +115,18 @@ test("root factory composes deterministic selection with the JavaScript adapter"
   );
 });
 
-test("packed package exposes every documented entry point", async () => {
+test("packed package matches the recorded public API baseline", async () => {
   await withPackedPackage(async ({ packResult, packageRoot, temporaryRoot }) => {
     const filenames = new Set(packResult.files.map(({ path }) => path));
-    for (const requiredFile of [
-      "dist/index.js",
-      "dist/index.d.ts",
-      "dist/core.js",
-      "dist/core.d.ts",
-      "dist/js.js",
-      "dist/js.d.ts",
-      ...ENCODINGS.flatMap((encoding) => [
-        `dist/encodings/${encoding}.js`,
-        `dist/encodings/${encoding}.d.ts`,
-      ]),
-      "package.json",
-    ]) {
+    const baselineFiles = Object.values(API_BASELINE.public_subpaths)
+      .flatMap(({ module, types, worker_asset: workerAsset }) => [
+        module,
+        types,
+        workerAsset,
+      ])
+      .filter(Boolean)
+      .map((path) => path.replace(/^\.\//, ""));
+    for (const requiredFile of [...baselineFiles, "package.json"]) {
       assert.equal(filenames.has(requiredFile), true, `${requiredFile} was not packed`);
     }
     assert.equal(
@@ -109,12 +138,50 @@ test("packed package exposes every documented entry point", async () => {
     const packedManifest = JSON.parse(
       await readFile(join(packageRoot, "package.json"), "utf8"),
     );
-    assert.deepEqual(Object.keys(packedManifest.exports).sort(), [
-      ".",
-      "./core",
-      ...ENCODINGS.map((encoding) => `./encodings/${encoding}`),
-      "./js",
-    ].sort());
+    assert.equal(API_BASELINE.schema_version, 1);
+    assert.equal(packedManifest.name, API_BASELINE.package);
+    assert.equal(packedManifest.type, API_BASELINE.runtime.package_type);
+    assert.equal(packedManifest.sideEffects, false);
+    assert.equal(packedManifest.types, API_BASELINE.public_subpaths["."].types);
+    assert.equal(packedManifest.engines.node, API_BASELINE.runtime.node);
+    assert.deepEqual(
+      Object.keys(packedManifest.exports).sort(),
+      Object.keys(API_BASELINE.public_subpaths).sort(),
+    );
+
+    for (const [subpath, expected] of Object.entries(
+      API_BASELINE.public_subpaths,
+    )) {
+      assert.deepEqual(packedManifest.exports[subpath], {
+        browser: expected.module,
+        default: expected.module,
+        import: expected.module,
+        types: expected.types,
+      });
+      const publicApi = await import(
+        pathToFileURL(join(packageRoot, expected.module))
+      );
+      assert.deepEqual(
+        Object.keys(publicApi).sort(),
+        [...expected.value_exports].sort(),
+        subpath,
+      );
+      const declaration = await readFile(
+        join(packageRoot, expected.types),
+        "utf8",
+      );
+      const exports = declarationExports(declaration);
+      assert.deepEqual(
+        exports.values,
+        [...expected.value_exports].sort(),
+        subpath,
+      );
+      assert.deepEqual(
+        exports.typeOnly,
+        [...expected.type_only_exports].sort(),
+        subpath,
+      );
+    }
 
     const consumer = join(packageRoot, "package-consumer.mjs");
     await writeFile(
@@ -127,6 +194,10 @@ test("packed package exposes every documented entry point", async () => {
           (encoding, index) =>
             `import { createTokenCounter as createIsolated${index} } from "@omiologic/token-counter/encodings/${encoding}";`,
         ),
+        ...ENCODINGS.map(
+          (encoding, index) =>
+            `import { createTokenCounter as createWorker${index} } from "@omiologic/token-counter/workers/${encoding}";`,
+        ),
         'if (resolveTokenEncoding({ provider: "openai", model: "gpt-4" }) !== "cl100k_base") throw new Error("core failed");',
         'if (createTokenCounter({ encoding: "cl100k_base" }).count("hello") !== 1) throw new Error("root failed");',
         'if (new JsTiktokenCounter("cl100k_base").count("hello") !== 1) throw new Error("js failed");',
@@ -134,6 +205,7 @@ test("packed package exposes every documented entry point", async () => {
           (encoding, index) =>
             `if (createIsolated${index}().count("hello") !== 1) throw new Error("${encoding} failed");`,
         ),
+        `if ([${ENCODINGS.map((_, index) => `createWorker${index}`).join(", ")}].some((factory) => typeof factory !== "function")) throw new Error("worker surface failed");`,
       ].join("\n"),
       "utf8",
     );
@@ -196,37 +268,34 @@ test("packed package exposes every documented entry point", async () => {
     const typeConsumer = join(packageRoot, "package-consumer.ts");
     await writeFile(
       typeConsumer,
-      [
-        'import { createTokenCounter, type TokenCounterDescriptor } from "@omiologic/token-counter";',
-        'import { resolveTokenEncoding, type TokenCounter } from "@omiologic/token-counter/core";',
-        'import { JsTiktokenCounter } from "@omiologic/token-counter/js";',
-        ...ENCODINGS.map(
-          (encoding, index) =>
-            `import { createTokenCounter as createIsolated${index} } from "@omiologic/token-counter/encodings/${encoding}";`,
-        ),
-        'const descriptor: TokenCounterDescriptor = { encoding: "cl100k_base" };',
-        `const counters: TokenCounter[] = [createTokenCounter(descriptor), new JsTiktokenCounter(resolveTokenEncoding(descriptor)), ${ENCODINGS.map((_, index) => `createIsolated${index}()`).join(", ")}];`,
-        'void counters;',
-      ].join("\n"),
+      await readFile(
+        new URL("./fixtures/consumers/public-api.ts", import.meta.url),
+        "utf8",
+      ),
       "utf8",
     );
-    await execFileAsync(
-      process.execPath,
-      [
-        join(ROOT, "node_modules/typescript/bin/tsc"),
-        "--noEmit",
-        "--ignoreConfig",
-        "--strict",
-        "--target",
-        "ES2022",
-        "--module",
-        "NodeNext",
-        "--moduleResolution",
-        "NodeNext",
-        typeConsumer,
-      ],
-      { cwd: packageRoot },
-    );
+    for (const [module, moduleResolution] of [
+      ["NodeNext", "NodeNext"],
+      ["ESNext", "Bundler"],
+    ]) {
+      await execFileAsync(
+        process.execPath,
+        [
+          join(ROOT, "node_modules/typescript/bin/tsc"),
+          "--noEmit",
+          "--ignoreConfig",
+          "--strict",
+          "--target",
+          API_BASELINE.runtime.target,
+          "--module",
+          module,
+          "--moduleResolution",
+          moduleResolution,
+          typeConsumer,
+        ],
+        { cwd: packageRoot },
+      );
+    }
   });
 });
 
@@ -270,6 +339,7 @@ test("packed public declarations contain only application-owned types", async ()
       "core.d.ts",
       "js.d.ts",
       ...ENCODINGS.map((encoding) => `encodings/${encoding}.d.ts`),
+      ...ENCODINGS.map((encoding) => `workers/${encoding}.d.ts`),
     ]) {
       const contents = await readFile(join(packageRoot, "dist", declaration), "utf8");
       assert.equal(contents.includes('from "js-tiktoken"'), false);

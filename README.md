@@ -47,7 +47,9 @@ Recommended invariants:
 - encoding/rank data is bundled locally rather than fetched at runtime;
 - tokenizer input is never logged or persisted by this package;
 - this package does not read environment variables or credentials;
-- this package performs no runtime network requests;
+- this package calls no remote service and downloads no tokenizer data;
+- optional workers load one explicitly selected, colocated module asset during
+  initialization and make no later counting request;
 - consumers sanitize secret-bearing text before counting;
 - tokenizer dependencies are version-pinned and audited before upgrades.
 
@@ -60,6 +62,14 @@ The public surface is deliberately small and does not expose tokenizer dependenc
 ```ts
 export interface TokenCounter {
   count(text: string): number;
+}
+
+export interface AsyncTokenCounter {
+  count(text: string): Promise<number>;
+}
+
+export interface BrowserWorkerTokenCounter extends AsyncTokenCounter {
+  close(): void;
 }
 
 export interface TokenCounterDescriptor {
@@ -138,6 +148,45 @@ resolved package and dependency artifacts together and serve versioned assets
 with immutable caching. Do not substitute a runtime rank-data URL or a floating
 production version.
 
+### Optional browser worker entry points
+
+Browser applications with sustained large workloads can select an encoding-
+specific dedicated worker without initializing that tokenizer on the main
+thread:
+
+```ts
+import { createTokenCounter } from "@omiologic/token-counter/workers/o200k_base";
+
+const counter = await createTokenCounter();
+try {
+  const tokens = await counter.count("sanitized model-bound text");
+} finally {
+  counter.close();
+}
+```
+
+The factory resolves only after the local module worker is ready. `close()`
+terminates the caller-owned worker and rejects pending and future counts with a
+content-free error. The synchronous `TokenCounter` contract and root factory
+remain unchanged.
+
+| Encoding | Import path |
+| --- | --- |
+| `cl100k_base` | `@omiologic/token-counter/workers/cl100k_base` |
+| `gpt2` | `@omiologic/token-counter/workers/gpt2` |
+| `o200k_base` | `@omiologic/token-counter/workers/o200k_base` |
+| `p50k_base` | `@omiologic/token-counter/workers/p50k_base` |
+| `p50k_edit` | `@omiologic/token-counter/workers/p50k_edit` |
+| `r50k_base` | `@omiologic/token-counter/workers/r50k_base` |
+
+Each factory resolves its matching `<encoding>.worker.js` beside the factory
+module. A bundler must preserve that relative module-worker URL and emit or copy
+the matching worker asset; a static host must serve both files from the same
+exact-version directory. Worker initialization is the explicit local asset-load
+boundary. Counting performs no later network request, returns only an integer,
+and does not log or persist text. Keep the synchronous surface for small or
+infrequent counts where worker startup and message transfer are not justified.
+
 ### Immutable CDN and vendored layout
 
 The verified static layout maps the same npm specifiers to standalone browser
@@ -149,6 +198,8 @@ ESM files beneath an exact-version prefix:
 | `@omiologic/token-counter/core` | `/npm/@omiologic/token-counter@<exact-version>/core.js` |
 | `@omiologic/token-counter/js` | `/npm/@omiologic/token-counter@<exact-version>/js.js` |
 | `@omiologic/token-counter/encodings/<encoding>` | `/npm/@omiologic/token-counter@<exact-version>/encodings/<encoding>.js` |
+| `@omiologic/token-counter/workers/<encoding>` | `/npm/@omiologic/token-counter@<exact-version>/workers/<encoding>.js` |
+| worker asset selected by that factory | `/npm/@omiologic/token-counter@<exact-version>/workers/<encoding>.worker.js` |
 
 `<exact-version>` must be replaced by an explicitly selected immutable package
 version. This repository has not selected one and does not publish or endorse a
@@ -184,6 +235,8 @@ import maps with revalidation or a short cache lifetime. Verify each artifact's
 SHA-384 value before deployment. Where the browser loading mechanism supports
 Subresource Integrity for the module entry, use the same `sha384-...` value;
 otherwise enforce the manifest during the trusted build or vendoring step.
+Worker factory and worker asset hashes are both included in the manifest and
+must be verified and vendored together.
 
 The local verification materializes this layout from a fixture-only version of
 the packed package, checks every hash, copies and imports the vendored files,
@@ -238,7 +291,36 @@ Server
 
 Client counting is useful for UX. Server counting is suitable for preflight enforcement. Provider-reported usage remains the post-invocation source of truth.
 
-The emitted ESM targets ES2022 and supports Node.js 18 or newer. Browser consumers should use an ESM-capable bundler so the package and its locally bundled encoding data are included in the application build. Initialization and counting perform no runtime downloads or remote lookups.
+The emitted ESM targets ES2022 and supports Node.js 18 or newer. Browser
+consumers should use an ESM-capable bundler so the package and its locally
+bundled encoding data are included in the application build. Synchronous
+initialization and all counting perform no runtime downloads or remote lookups;
+an optional worker factory has the explicit colocated asset-load boundary
+described above.
+
+## Supported environments and ownership
+
+| Surface | Supported runtime | Consumer responsibility |
+| --- | --- | --- |
+| package root | Node.js 18+ and ESM-capable browser builds | Supply a deterministic descriptor and bundle the local tokenizer data. |
+| `/core` | Node.js 18+ and ESM-capable browser builds | Compose application-owned contracts and selection without tokenizer code. |
+| `/js` | Node.js 18+ and ESM-capable browser builds | Select a supported encoding and accept the all-encoding JavaScript payload. |
+| `/encodings/<encoding>` | Node.js 18+ and ESM-capable browser builds | Import only the required static encoding entry. |
+| `/workers/<encoding>` | Browsers with dedicated module-worker support | Await readiness, host or emit the matching worker asset, and always call `close()` when finished. |
+| exact-version static layout | ESM-capable browsers | Derive files from one packed version, verify SHA-384 values, and host factory/worker pairs together. |
+
+The package owns deterministic local measurement and content-free public
+failures. Applications own input sanitization, worker lifetime, bundle and
+static-host configuration, context-budget decisions, provider invocation, and
+post-invocation usage reconciliation. Worker `close()` terminates the
+caller-owned worker; pending and future counts reject without returning input
+text. Exact content-free error wording is not a compatibility promise.
+
+No richer measurement result, WASM adapter, additional tokenizer adapter,
+worker cancellation API, provider accounting, or runtime tokenizer download is
+supported. Those evaluated ideas are deferred rather than release commitments.
+See the [local feature index](./_notes/features/README.md) for the evidence and
+current disposition of each capability.
 
 ## Why `js-tiktoken`
 
@@ -272,17 +354,22 @@ token-counter/
 │   ├── index.ts
 │   ├── core.ts
 │   ├── js.ts
+│   ├── async-token-counter.ts
 │   ├── token-counter.ts
 │   ├── registry.ts
 │   ├── encodings/
 │   │   └── <encoding>.ts
-│   └── adapters/
-│       ├── js-tiktoken.ts
-│       └── js-tiktoken-lite.ts
+│   ├── adapters/
+│   │   ├── browser-worker.ts
+│   │   ├── js-tiktoken.ts
+│   │   └── js-tiktoken-lite.ts
+│   └── workers/
+│       └── <encoding>.{ts,worker.ts}
 ├── test/
 │   ├── fixtures/
 │   ├── reference/
 │   └── *.test.mjs
+├── CHANGELOG.md
 ├── README.md
 └── ARCHITECTURE.md
 ```
@@ -310,6 +397,41 @@ The committed suite covers:
 - public results, errors, logs, declarations, and exports that contain no input text or token arrays.
 - one-rank-only browser bundles, trusted parity, and denied-network execution for every isolated encoding entry.
 - exact-version CDN-style artifacts, immutable cache headers, SHA-384 manifests, and equivalent vendored imports.
+- worker readiness, concurrency, lifecycle, failure, close, offline, output-safety, and per-encoding trusted parity.
+- worker factories with no main-thread tokenizer payload and worker artifacts containing exactly one selected rank module.
+- the recorded public export and declaration baseline compiled with TypeScript
+  `NodeNext` and `Bundler` module resolution.
+
+Run the packed-package reproducibility qualification separately when preparing
+release-readiness evidence:
+
+```sh
+npm run test:reproducibility
+```
+
+This qualification performs two independent `npm ci --ignore-scripts` builds,
+packs each build with a fixture-only version, and compares a sorted manifest of
+relative paths, byte lengths, and SHA-384 content hashes. It then installs each
+tarball into a clean minimal consumer with package scripts denied and the
+package-manager network disabled. Those installed copies run the trusted
+fixture corpus through every documented Node and browser surface, verify
+isolated and worker payload boundaries, and materialize equivalent CDN-style
+and vendored layouts. A locally installed Chrome, Chromium, or Edge executable
+is required. See the [recorded qualification evidence](./_notes/release-readiness/reproducible-packed-package.md).
+
+The browser worker evaluation measures the public `o200k_base` worker against
+the synchronous isolated counter for a sustained large nonrepeated workload:
+
+```sh
+npm run build
+node test/evaluation/evaluate-browser-worker.mjs
+```
+
+The production confirmation reduced the median maximum heartbeat gap by 94.1%
+while preserving fixture parity and making no request after initialization. See the
+[browser worker evaluation](./_notes/worker-analysis/README.md) for the workload,
+payload and memory costs, and adoption boundary. Performance values are
+machine-specific evidence rather than test thresholds.
 
 The largest deterministic test input is 54,843 UTF-8 bytes, and every fixture is bounded below 64 KiB. The suite uses a generous browser timeout rather than a machine-speed assertion, avoiding flaky performance thresholds while still verifying completion within a fixed resource envelope.
 
@@ -319,6 +441,55 @@ Reference provenance and reproduction instructions are recorded in [`test/fixtur
 /tmp/token-counter-reference/bin/python test/reference/verify_tiktoken.py
 ```
 
+## Compatibility and semver baseline
+
+The checked-in [public API baseline](./test/fixtures/public-api-baseline.json)
+is the reviewable inventory of package subpaths, value exports, type-only
+exports, worker assets, and declaration signatures. The committed
+[consumer fixture](./test/fixtures/consumers/public-api.ts) exercises every
+surface. Package tests compare the packed export map and declarations to that
+baseline and compile the consumer with both supported TypeScript resolution
+styles.
+
+The following are public compatibility commitments:
+
+- the root, `/core`, `/js`, `/encodings/<encoding>`, and
+  `/workers/<encoding>` subpaths recorded in the baseline;
+- the application-owned exported names and signatures reachable from those
+  subpaths;
+- synchronous numeric `TokenCounter.count()`, synchronous isolated factories,
+  and the descriptor-based root factory;
+- asynchronous worker creation and counting, readiness before factory
+  resolution, caller-owned `close()`, and deterministic rejection of pending
+  and future work after closure;
+- deterministic encoding selection, local/offline counting after explicit
+  asset initialization, numeric-only results, and content-free failures; and
+- ESM, browser, and Node.js 18-or-newer support declared by the package.
+
+Adding a new opt-in subpath or independent export is normally additive when it
+does not change existing declarations, loading, or behavior. Adding an optional
+descriptor field is also normally additive. Removing or renaming a supported
+subpath or export, making an optional input required, changing a public type or
+constructor incompatibly, changing a synchronous result to asynchronous (or
+the reverse), replacing a numeric result, or weakening worker close, offline,
+or content-safety behavior is breaking under the configured semver policy.
+
+Expanding `TokenEncoding`, changing a model-to-encoding mapping, or adopting a
+tokenizer change that alters counts requires explicit compatibility review; a
+union expansion can break exhaustive TypeScript consumers and is not assumed
+to be additive. Dependency implementation types must never enter the public
+declaration closure.
+
+Dependency internals, private adapter classes, worker message protocol details,
+generated bundle bytes and hashes across versions, exact content-free error
+wording, and evaluation timing or memory measurements are not compatibility
+promises. Immutable artifacts remain immutable within a selected version, but
+their byte layout is not frozen across versions. Provider billing and usage
+accounting remain outside this package.
+
+This baseline supports future version classification. It does not select a
+version or authorize a release.
+
 ## Dependency policy
 
 1. Pin exact dependency versions and commit the lockfile.
@@ -327,8 +498,17 @@ Reference provenance and reproduction instructions are recorded in [`test/fixtur
 4. Run deterministic parity fixtures before merging an upgrade.
 5. Do not allow automatic dependency updates to bypass review.
 
+The current post-worker dependency graph and tokenizer parity are recorded in
+the [dated release dependency review](./_notes/dependency-audits/post-worker-release-review-2026-08-30.md).
+That evidence does not select a version or authorize a release.
+
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for the boundary design and security invariants.
 
 ## Status
 
-The root, core, JavaScript adapter, and isolated encoding surfaces are verified locally for Node and browser runtimes. The package remains private and has no selected release version; verification does not authorize publication or release.
+The root, core, JavaScript adapter, isolated encoding, and optional browser
+worker surfaces are verified locally. The package remains private and has no
+selected release version; verification does not authorize publication or
+release. Review the [Unreleased changelog](./CHANGELOG.md) and the
+[support review checklist](./_notes/release-readiness/unreleased-support-review.md)
+before any later release decision.

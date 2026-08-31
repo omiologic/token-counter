@@ -249,16 +249,18 @@ try {
     if (fixtureServer.runtimeRequests.length !== 0) {
       throw new Error("CDN fixture made a request after its load checkpoint.");
     }
-    for (const { artifact } of CDN_SURFACES) {
-      const expectedPath = `${CDN_BASE_PATH}/${artifact}`;
-      if (!fixtureServer.requestedArtifacts.has(expectedPath)) {
-        throw new Error(`CDN artifact was not requested: ${expectedPath}`);
-      }
-      if (
-        fixtureServer.artifactCacheHeaders.get(expectedPath) !==
-        "public, max-age=31536000, immutable"
-      ) {
-        throw new Error(`CDN artifact was not served immutably: ${expectedPath}`);
+    for (const { artifact, workerArtifact } of CDN_SURFACES) {
+      for (const expectedArtifact of [artifact, workerArtifact].filter(Boolean)) {
+        const expectedPath = `${CDN_BASE_PATH}/${expectedArtifact}`;
+        if (!fixtureServer.requestedArtifacts.has(expectedPath)) {
+          throw new Error(`CDN artifact was not requested: ${expectedPath}`);
+        }
+        if (
+          fixtureServer.artifactCacheHeaders.get(expectedPath) !==
+          "public, max-age=31536000, immutable"
+        ) {
+          throw new Error(`CDN artifact was not served immutably: ${expectedPath}`);
+        }
       }
     }
     process.stdout.write("cdn-browser-ok\n");
