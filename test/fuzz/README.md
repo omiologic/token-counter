@@ -70,18 +70,19 @@ mismatches, and emits only the allowlisted reproduction metadata above.
 ## Current qualification result
 
 The 48-case JavaScript matrix passes across root, full JavaScript, isolated, and
-the declared worker subset. The 192-case default Python qualification currently
-detects 71 differences among 1,152 encoding/case comparisons: 12
-`cl100k_base`, 11 `gpt2`, 13 `o200k_base`, 12 `p50k_base`, 12 `p50k_edit`, and
-11 `r50k_base` differences. The command therefore exits nonzero by design.
+the declared worker subset. The 192-case default Python qualification passes
+all 1,152 encoding/case comparisons against official Python
+`tiktoken==0.14.0`.
 
-This result narrows the earlier trusted-reference claim: the reviewed fixture
-corpus still matches the pinned oracle, while arbitrary generated JavaScript
-strings are not universally equivalent between `js-tiktoken@1.0.21` and
-official Python `tiktoken==0.14.0`. Seed and case metadata are the retained
-regression evidence; generated inputs are not retained. A later dependency or
-adapter decision must rerun this qualification rather than treating current
-local counts as provider or Python billing truth.
+The prior 71 differences were classified using only seed/case/category/length
+and numeric-count metadata. All were caused by the dependency's use of
+JavaScript `\s`/`\S`: JavaScript omits U+0085 and includes U+FEFF, unlike the
+reference regex engine's Unicode White_Space set. Counterfactual runs found 43
+historical comparisons in generated whitespace/control cases and 28 in mixed
+cases; translating only the pattern semantics cleared all 71, while a
+surrogate-repair experiment cleared none. No generated string, token array, or
+content fingerprint was retained. Local parity remains a preflight
+qualification, not provider billing truth.
 
 ## Failure safety
 

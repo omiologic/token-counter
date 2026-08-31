@@ -306,6 +306,14 @@ The adapter must:
 - expose no credential/configuration capability;
 - be replaceable without changing consumer contracts.
 
+The pinned dependency expresses pre-tokenization with `\s` and `\S`, whose
+JavaScript meaning differs from the Unicode White_Space semantics used by the
+pinned official reference: JavaScript omits U+0085 and includes U+FEFF. The
+package-owned adapter translates those pattern escapes to the explicit
+reference character set during local initialization for both full and isolated
+surfaces. This is a tokenizer-pattern compatibility correction, not input
+normalization or repair; caller-visible JavaScript code units remain unchanged.
+
 ## Encoding selection
 
 Provider names and model names can change independently from tokenizer encodings. The architecture should avoid hard-wiring provider catalogs into the core counter interface.
@@ -444,9 +452,10 @@ printing the string, token IDs, or a content fingerprint.
 
 Cross-surface JavaScript equality and Python-reference equality are distinct
 claims. A passing root/full/isolated/worker matrix proves adapter-surface
-consistency; it does not prove universal equivalence with another tokenizer
-runtime. The opt-in reference qualification should fail safely when it detects
-such a semantic difference and remain separate from the bounded ordinary suite.
+consistency; the separate opt-in reference qualification establishes agreement
+with the pinned oracle for its bounded deterministic corpus. It should fail
+safely when it detects a semantic difference and remain separate from the
+ordinary suite.
 
 Fixture materialization must preserve exact caller-visible JavaScript code
 units. The package does not normalize, reject, sanitize, or define independent

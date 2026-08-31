@@ -367,11 +367,12 @@ preflight estimate != provider-reported usage
 
 Applications should record both numeric values when useful and reconcile estimate error without persisting model-bound content.
 
-The reviewed known-answer corpus matches the pinned official Python reference.
-Deterministic privacy-safe fuzzing additionally shows that arbitrary generated
-JavaScript strings can expose tokenizer-runtime differences even when every
-JavaScript package surface agrees. Treat the opt-in fuzz-reference result as a
-qualification signal, not a reason to disclose or retain the generated input.
+The reviewed known-answer corpus and deterministic privacy-safe arbitrary-
+string corpus match the pinned official Python reference. The adapter makes
+the pinned dependency's pre-tokenization whitespace semantics explicit so
+JavaScript does not substitute its different `\s`/`\S` character set. Treat
+the opt-in fuzz-reference result as a qualification signal, never a reason to
+disclose or retain generated input.
 
 ## Package shape
 
@@ -483,11 +484,15 @@ npm run test:fuzz
 
 The generator contract, default `0x5eedc0de` seed, budgets, safe one-case replay,
 and opt-in Python command are documented in the [fuzz harness](./test/fuzz/README.md).
-The reviewed 34-fixture corpus matches official `tiktoken==0.14.0`, but the
-deeper 192-case generated qualification currently detects 71 differences among
-1,152 comparisons with `js-tiktoken@1.0.21` and exits nonzero. This is retained
-release-readiness evidence that deterministic local adapter counts are not a
-universal Python-reference or provider-billing guarantee.
+The reviewed 34-fixture corpus and deeper 192-case generated qualification
+match official `tiktoken==0.14.0`: 204 curated and 1,152 generated comparisons
+pass across all six encodings. The historical 71 generated differences were
+traced without retaining content to JavaScript `\s`/`\S` semantics: unlike
+the reference regex engine, JavaScript excludes U+0085 and includes U+FEFF.
+The adapter translates the dependency's pre-tokenization pattern to the
+reference Unicode White_Space set before counting. It does not normalize,
+reject, sanitize, or repair input text. This parity evidence still does not
+make local counts provider usage or billing truth.
 
 Counting applies no package-owned Unicode normalization, rejection,
 sanitization, or repair. Precomposed and combining forms and lone UTF-16

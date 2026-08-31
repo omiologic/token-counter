@@ -5,6 +5,15 @@ select or authorize a release.
 
 ## [Unreleased]
 
+### Fixed
+
+- Restored arbitrary-JavaScript-string parity with the pinned official
+  `tiktoken==0.14.0` reference by translating the dependency's JavaScript
+  `\s`/`\S` pre-tokenization semantics to the reference Unicode White_Space
+  set. All 204 curated and 1,152 deterministic generated comparisons now pass
+  across six encodings without input normalization, a dependency change, or a
+  public API change.
+
 ## [0.1.0-beta.1] - 2026-08-31
 
 ### Added

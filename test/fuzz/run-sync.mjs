@@ -9,11 +9,11 @@ import { createSyncFuzzCounters } from "./sync-surfaces.mjs";
 
 export const DEFAULT_FUZZ_COUNT_TOTALS = Object.freeze({
   cl100k_base: 21591,
-  gpt2: 23732,
-  o200k_base: 19787,
+  gpt2: 23733,
+  o200k_base: 19780,
   p50k_base: 23729,
   p50k_edit: 23729,
-  r50k_base: 23732,
+  r50k_base: 23733,
 });
 
 export function runSyncFuzzParity({
