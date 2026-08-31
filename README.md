@@ -298,6 +298,30 @@ initialization and all counting perform no runtime downloads or remote lookups;
 an optional worker factory has the explicit colocated asset-load boundary
 described above.
 
+## Supported environments and ownership
+
+| Surface | Supported runtime | Consumer responsibility |
+| --- | --- | --- |
+| package root | Node.js 18+ and ESM-capable browser builds | Supply a deterministic descriptor and bundle the local tokenizer data. |
+| `/core` | Node.js 18+ and ESM-capable browser builds | Compose application-owned contracts and selection without tokenizer code. |
+| `/js` | Node.js 18+ and ESM-capable browser builds | Select a supported encoding and accept the all-encoding JavaScript payload. |
+| `/encodings/<encoding>` | Node.js 18+ and ESM-capable browser builds | Import only the required static encoding entry. |
+| `/workers/<encoding>` | Browsers with dedicated module-worker support | Await readiness, host or emit the matching worker asset, and always call `close()` when finished. |
+| exact-version static layout | ESM-capable browsers | Derive files from one packed version, verify SHA-384 values, and host factory/worker pairs together. |
+
+The package owns deterministic local measurement and content-free public
+failures. Applications own input sanitization, worker lifetime, bundle and
+static-host configuration, context-budget decisions, provider invocation, and
+post-invocation usage reconciliation. Worker `close()` terminates the
+caller-owned worker; pending and future counts reject without returning input
+text. Exact content-free error wording is not a compatibility promise.
+
+No richer measurement result, WASM adapter, additional tokenizer adapter,
+worker cancellation API, provider accounting, or runtime tokenizer download is
+supported. Those evaluated ideas are deferred rather than release commitments.
+See the [local feature index](./_notes/features/README.md) for the evidence and
+current disposition of each capability.
+
 ## Why `js-tiktoken`
 
 The initial adapter uses `js-tiktoken` because it fits a shared JavaScript/TypeScript stack and can run locally in both browser and server environments.
@@ -345,6 +369,7 @@ token-counter/
 │   ├── fixtures/
 │   ├── reference/
 │   └── *.test.mjs
+├── CHANGELOG.md
 ├── README.md
 └── ARCHITECTURE.md
 ```
@@ -376,6 +401,23 @@ The committed suite covers:
 - worker factories with no main-thread tokenizer payload and worker artifacts containing exactly one selected rank module.
 - the recorded public export and declaration baseline compiled with TypeScript
   `NodeNext` and `Bundler` module resolution.
+
+Run the packed-package reproducibility qualification separately when preparing
+release-readiness evidence:
+
+```sh
+npm run test:reproducibility
+```
+
+This qualification performs two independent `npm ci --ignore-scripts` builds,
+packs each build with a fixture-only version, and compares a sorted manifest of
+relative paths, byte lengths, and SHA-384 content hashes. It then installs each
+tarball into a clean minimal consumer with package scripts denied and the
+package-manager network disabled. Those installed copies run the trusted
+fixture corpus through every documented Node and browser surface, verify
+isolated and worker payload boundaries, and materialize equivalent CDN-style
+and vendored layouts. A locally installed Chrome, Chromium, or Edge executable
+is required. See the [recorded qualification evidence](./_notes/release-readiness/reproducible-packed-package.md).
 
 The browser worker evaluation measures the public `o200k_base` worker against
 the synchronous isolated counter for a sustained large nonrepeated workload:
@@ -456,6 +498,10 @@ version or authorize a release.
 4. Run deterministic parity fixtures before merging an upgrade.
 5. Do not allow automatic dependency updates to bypass review.
 
+The current post-worker dependency graph and tokenizer parity are recorded in
+the [dated release dependency review](./_notes/dependency-audits/post-worker-release-review-2026-08-30.md).
+That evidence does not select a version or authorize a release.
+
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for the boundary design and security invariants.
 
 ## Status
@@ -463,4 +509,6 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for the boundary design and security in
 The root, core, JavaScript adapter, isolated encoding, and optional browser
 worker surfaces are verified locally. The package remains private and has no
 selected release version; verification does not authorize publication or
-release.
+release. Review the [Unreleased changelog](./CHANGELOG.md) and the
+[support review checklist](./_notes/release-readiness/unreleased-support-review.md)
+before any later release decision.

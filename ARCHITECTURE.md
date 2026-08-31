@@ -131,6 +131,31 @@ The library does not own reconciliation policy, billing, or pricing tables.
 
 Keeping these boundaries narrow makes the package reusable and easier to audit.
 
+## Current support boundary
+
+The verified package surface consists of the root, `/core`, `/js`, six static
+`/encodings/<encoding>` entries, and six optional browser-only
+`/workers/<encoding>` entries. The synchronous surfaces support Node.js 18 or
+newer and ESM-capable browser builds. Worker factories require dedicated module
+workers, resolve only after their matching local asset is ready, and place
+termination ownership on the caller through `close()`.
+
+Exact-version CDN-style and vendored layouts are verified delivery patterns,
+not a hosted service owned by the library. A consumer or distributor derives
+the artifacts from one packed package, verifies their SHA-384 manifest, and
+keeps each worker factory beside the same-version worker asset. Runtime rank
+downloads, floating versions, and remote counting remain outside the boundary.
+
+Richer measurement results, WASM, additional tokenizer adapters, and worker
+cancellation are not supported surfaces. Their evaluations are deferred until
+a concrete consumer establishes a requirement that existing composition cannot
+satisfy. Provider invocation, provider usage reconciliation, billing, pricing,
+secret scanning, prompt construction, and context-budget policy remain
+unsupported package responsibilities.
+
+This support boundary describes verified behavior only. It does not select a
+version, promise publication, or authorize a release or deployment.
+
 ## Component model
 
 ```text
@@ -420,6 +445,7 @@ token-counter/
 ├── test/
 │   ├── fixtures/
 │   └── js-tiktoken.test.ts
+├── CHANGELOG.md
 ├── README.md
 ├── ARCHITECTURE.md
 ├── package.json
