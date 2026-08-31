@@ -1,9 +1,11 @@
 # Changelog
 
-This file records user-visible package changes. The project has not selected a
-release version, date, channel, registry, CDN provider, or deployment target.
+This file records user-visible package changes. An `Unreleased` entry does not
+select or authorize a release.
 
 ## [Unreleased]
+
+## [0.1.0-beta.1] - 2026-08-31
 
 ### Added
 
@@ -47,11 +49,19 @@ release version, date, channel, registry, CDN provider, or deployment target.
   adapter and official Python reference; reviewed fixture parity remains
   unchanged.
 - Added browser-worker readiness, concurrency, lifecycle, close, payload
-  isolation, offline-counting, and content-free failure checks. Closing a
-  worker rejects pending and future counts without returning input text.
+  isolation, offline-counting, out-of-order/duplicate/late response races,
+  safe request-ID exhaustion, and content-free failure checks. Closing a worker
+  rejects pending and future counts without returning input text, and
+  close/failure overlap terminates the worker at most once.
 - Added a checked-in public API baseline, installed-consumer compilation under
   TypeScript `NodeNext` and `Bundler` resolution, and reproducible packed-file
   manifest and content-hash qualification.
+- Added a separate deterministic megabyte-scale stress qualification covering
+  synchronous/worker count parity, heartbeat responsiveness, elapsed time, and
+  approximate memory at 1, 5, and 20 MiB without adding a public input limit.
+- Added strict same-origin CSP and denied-worker qualification in Chrome 151.
+  The current release-grade host matrix does not qualify Firefox or Safari/
+  WebKit; no runtime fallback, browser download, or test dependency was added.
 
 ### Compatibility and support
 
@@ -81,10 +91,3 @@ release version, date, channel, registry, CDN provider, or deployment target.
   policy, provider usage reconciliation, billing, pricing, worker
   cancellation, runtime tokenizer downloads, and floating-version CDN URLs are
   unsupported.
-
-### Release status
-
-- This entry is release-readiness documentation only. A future version, tag,
-  release, publication, CDN upload, or deployment requires separate explicit
-  human approval after the tests, tokenizer parity, public API, dependency
-  audit, changelog, and release-readiness recommendation are reviewed.

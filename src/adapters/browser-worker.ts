@@ -27,8 +27,9 @@ class LocalBrowserWorkerTokenCounter implements BrowserWorkerTokenCounter {
   #nextRequestId = 0;
   #state: CounterState = "open";
 
-  constructor(worker: Worker) {
+  constructor(worker: Worker, initialRequestId = 0) {
     this.#worker = worker;
+    this.#nextRequestId = initialRequestId;
     worker.addEventListener("message", this.#onMessage);
     worker.addEventListener("error", this.#onFailure);
     worker.addEventListener("messageerror", this.#onFailure);
@@ -43,6 +44,9 @@ class LocalBrowserWorkerTokenCounter implements BrowserWorkerTokenCounter {
       );
     }
     if (typeof text !== "string") {
+      return Promise.reject(new Error(COUNT_FAILURE_MESSAGE));
+    }
+    if (!Number.isSafeInteger(this.#nextRequestId) || this.#nextRequestId < 0) {
       return Promise.reject(new Error(COUNT_FAILURE_MESSAGE));
     }
 
@@ -61,7 +65,7 @@ class LocalBrowserWorkerTokenCounter implements BrowserWorkerTokenCounter {
   }
 
   close(): void {
-    if (this.#state === "closed") return;
+    if (this.#state !== "open") return;
     this.#state = "closed";
     this.#detach();
     this.#worker.terminate();
@@ -135,7 +139,11 @@ class LocalBrowserWorkerTokenCounter implements BrowserWorkerTokenCounter {
 export function createBrowserWorkerTokenCounter(
   workerUrl: URL,
   workerName: string,
+  initialRequestId = 0,
 ): Promise<BrowserWorkerTokenCounter> {
+  if (!Number.isSafeInteger(initialRequestId) || initialRequestId < 0) {
+    return Promise.reject(initializationError());
+  }
   let worker: Worker;
   try {
     worker = new Worker(workerUrl, {
@@ -176,7 +184,7 @@ export function createBrowserWorkerTokenCounter(
       if (settled) return;
       settled = true;
       cleanup();
-      resolve(new LocalBrowserWorkerTokenCounter(worker));
+      resolve(new LocalBrowserWorkerTokenCounter(worker, initialRequestId));
     };
 
     worker.addEventListener("message", onMessage);

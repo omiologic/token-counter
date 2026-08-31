@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="data:," />
+    <title>Token counter stress qualification</title>
+  </head>
+  <body>
+    <pre>token-counter-stress-running</pre>
+    <script type="module">
+      const originalFetch = globalThis.fetch;
+      const report = async (result) => {
+        globalThis.fetch = originalFetch;
+        await originalFetch("/__stress_result__", {
+          body: JSON.stringify(result),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        });
+      };
+      const deny = () => {
+        throw new Error("Runtime capability denied by stress qualification.");
+      };
+      const memory = () => performance.memory?.usedJSHeapSize ?? null;
+      const heartbeat = async (operation) => {
+        const gaps = [];
+        let previous = performance.now();
+        const timer = setInterval(() => {
+          const current = performance.now();
+          gaps.push(current - previous);
+          previous = current;
+        }, 5);
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        gaps.length = 0;
+        previous = performance.now();
+        const started = performance.now();
+        const value = await operation();
+        const elapsed = performance.now() - started;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        clearInterval(timer);
+        return {
+          count: value,
+          elapsed_milliseconds: elapsed,
+          heartbeat_max_gap_milliseconds: Math.max(...gaps),
+        };
+      };
+      const repeatedText = (bytes) => {
+        const fragment = "alpha-123\n";
+        return fragment.repeat(Math.ceil(bytes / fragment.length)).slice(0, bytes);
+      };
+      const entropyLikeText = (bytes) => {
+        let state = 0x5eedc0de;
+        const chunks = [];
+        for (let offset = 0; offset < bytes; offset += 1_048_576) {
+          const length = Math.min(1_048_576, bytes - offset);
+          const values = new Uint8Array(length);
+          for (let index = 0; index < length; index += 1) {
+            state ^= state << 13;
+            state ^= state >>> 17;
+            state ^= state << 5;
+            values[index] = 32 + ((state >>> 0) % 95);
+          }
+          chunks.push(new TextDecoder().decode(values));
+        }
+        return chunks.join("");
+      };
+
+      let workerCounter;
+      try {
+        const settings = await originalFetch("/__stress_settings__").then(
+          (response) => response.json(),
+        );
+        const main = await import("/main.js");
+        const workerApi = await import("/worker-api.js");
+        workerCounter = await workerApi.createTokenCounter();
+        await originalFetch("/__stress_checkpoint__");
+
+        globalThis.fetch = deny;
+        if (globalThis.XMLHttpRequest) globalThis.XMLHttpRequest.prototype.open = deny;
+        globalThis.WebSocket = deny;
+        globalThis.EventSource = deny;
+        if (globalThis.Navigator?.prototype?.sendBeacon) {
+          globalThis.Navigator.prototype.sendBeacon = deny;
+        }
+        if (globalThis.Storage?.prototype?.setItem) {
+          globalThis.Storage.prototype.setItem = deny;
+        }
+        if (globalThis.indexedDB?.open) globalThis.indexedDB.open = deny;
+        if (globalThis.caches?.open) globalThis.caches.open = deny;
+
+        const cases = [];
+        for (const sizeMib of settings.sizes_mib) {
+          const bytes = sizeMib * 1_048_576;
+          for (const recipe of ["repeated", "entropy-like"]) {
+            const repetitions = sizeMib === settings.repeat_size_mib ? 2 : 1;
+            for (let repetition = 0; repetition < repetitions; repetition += 1) {
+              let text = recipe === "repeated"
+                ? repeatedText(bytes)
+                : entropyLikeText(bytes);
+              const actualBytes = new TextEncoder().encode(text).byteLength;
+              if (actualBytes !== bytes) throw new Error("Size verification failed.");
+              const memoryAfterGeneration = memory();
+              const sync = await heartbeat(() => main.count(text));
+              const memoryAfterSync = memory();
+              const worker = await heartbeat(() => workerCounter.count(text));
+              const memoryAfterWorker = memory();
+              if (
+                sync.count !== worker.count ||
+                !Number.isSafeInteger(sync.count) ||
+                sync.count < 0
+              ) {
+                throw new Error("Count parity failed.");
+              }
+              cases.push({
+                bytes,
+                count: sync.count,
+                memory_bytes: {
+                  after_generation: memoryAfterGeneration,
+                  after_sync: memoryAfterSync,
+                  after_worker: memoryAfterWorker,
+                  source: "performance.memory",
+                },
+                recipe,
+                repetition,
+                sync: {
+                  elapsed_milliseconds: sync.elapsed_milliseconds,
+                  heartbeat_max_gap_milliseconds:
+                    sync.heartbeat_max_gap_milliseconds,
+                },
+                worker: {
+                  elapsed_milliseconds: worker.elapsed_milliseconds,
+                  heartbeat_max_gap_milliseconds:
+                    worker.heartbeat_max_gap_milliseconds,
+                },
+              });
+              text = undefined;
+              await new Promise((resolve) => setTimeout(resolve, 25));
+            }
+          }
+        }
+        workerCounter.close();
+        workerCounter = undefined;
+        await report({ cases, failed: false });
+      } catch {
+        workerCounter?.close();
+        await report({ failed: true });
+      }
+    </script>
+  </body>
+</html>

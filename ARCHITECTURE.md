@@ -140,6 +140,14 @@ newer and ESM-capable browser builds. Worker factories require dedicated module
 workers, resolve only after their matching local asset is ready, and place
 termination ownership on the caller through `close()`.
 
+The release-grade host matrix currently qualifies Google Chrome
+151.0.7922.175 across the synchronous, isolated, worker, exact-version static,
+and strict-CSP paths. Firefox and Safari/WebKit remain ESM compatibility targets
+but are not release-qualified by the current evidence because Firefox tooling
+was unavailable and Safari's built-in driver requires a user-controlled remote-
+automation setting. This limitation narrows evidence, not the application-owned
+contracts, and avoids runtime fallbacks or downloaded browser tooling.
+
 Exact-version CDN-style and vendored layouts are verified delivery patterns,
 not a hosted service owned by the library. A consumer or distributor derives
 the artifacts from one packed package, verifies their SHA-384 manifest, and
@@ -250,6 +258,10 @@ tokenizer initialization. The measured comparison still duplicates the rank
 only because it deliberately loads both sync and worker paths side by side.
 Initialization, worker, count, and close failures are content-free. `close()`
 terminates the worker and rejects pending and future requests deterministically.
+Out-of-order responses retain request association. Duplicate, unknown, late,
+or malformed responses cannot settle another request, and the internal request
+identifier stops at JavaScript's maximum safe integer rather than wrapping or
+colliding. Close/failure races settle pending work and terminate at most once.
 Cancellation should be added only when the adopted runtime demonstrates a need
 and defines whether it cancels computation or merely discards the result; it
 must not be assumed by the minimal interface. Initialization should occur once
@@ -257,6 +269,13 @@ per adapter instance rather than being hidden in every `count()` call. The
 worker is browser-only, while trusted fixture parity preserves equivalent
 counting semantics with Node and synchronous browser paths. Counting remains
 offline after the explicit worker initialization boundary.
+
+The separate resource qualification verifies parity through deterministic
+20 MiB repeated and entropy-like inputs, but does not make input size, elapsed
+time, heartbeat gaps, or approximate heap observations compatibility promises.
+Consumers own resource limits, timeouts, and concurrency. Large interactive
+workloads should use the optional worker when main-thread occupancy is
+unacceptable; the package does not impose an arbitrary universal maximum.
 
 ## `js-tiktoken` adapter
 

@@ -598,6 +598,7 @@ async function verifyBrowserConsumer(siteRoot, browser) {
       }
     }
   } finally {
+    fixtureServer.server.closeAllConnections();
     await new Promise((resolveClosed) => fixtureServer.server.close(resolveClosed));
   }
 }

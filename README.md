@@ -167,8 +167,11 @@ try {
 
 The factory resolves only after the local module worker is ready. `close()`
 terminates the caller-owned worker and rejects pending and future counts with a
-content-free error. The synchronous `TokenCounter` contract and root factory
-remain unchanged.
+content-free error. Concurrent results remain associated with their originating
+request even when responses arrive out of order; malformed, duplicate, or
+unknown responses fail the counter instead of being reused. Internal request-ID
+exhaustion also rejects content-free before an unsafe or colliding ID is sent.
+The synchronous `TokenCounter` contract and root factory remain unchanged.
 
 | Encoding | Import path |
 | --- | --- |
@@ -186,6 +189,16 @@ exact-version directory. Worker initialization is the explicit local asset-load
 boundary. Counting performs no later network request, returns only an integer,
 and does not log or persist text. Keep the synchronous surface for small or
 infrequent counts where worker startup and message transfer are not justified.
+
+The opt-in `npm run test:stress` qualification has completed matching
+`o200k_base` synchronous and worker counts for deterministic 1, 5, and 20 MiB
+inputs. On the recorded host, 20 MiB synchronous counts occupied the browser
+main thread for seconds, while worker offload preserved substantially better
+heartbeat responsiveness at similar total latency. These are machine-specific
+resource observations, not portable performance guarantees or a package-owned
+input limit. Applications own input-size, timeout, concurrency, and memory
+policy; prefer a worker when large counts must not monopolize an interactive
+main thread.
 
 ### Immutable CDN and vendored layout
 
@@ -298,16 +311,24 @@ initialization and all counting perform no runtime downloads or remote lookups;
 an optional worker factory has the explicit colocated asset-load boundary
 described above.
 
+The current release-grade browser qualification covers Google Chrome
+151.0.7922.175, including strict same-origin CSP, blocked-worker failure, and
+exact-version CDN/vendored layouts. Firefox and Safari/WebKit remain compatible
+targets for ESM builds but are not release-qualified by the current host
+matrix: Firefox tooling was unavailable, and Safari automation requires a
+user-controlled setting that was not changed. Do not treat the Chromium run as
+evidence for every browser or Safari release.
+
 ## Supported environments and ownership
 
 | Surface | Supported runtime | Consumer responsibility |
 | --- | --- | --- |
-| package root | Node.js 18+ and ESM-capable browser builds | Supply a deterministic descriptor and bundle the local tokenizer data. |
-| `/core` | Node.js 18+ and ESM-capable browser builds | Compose application-owned contracts and selection without tokenizer code. |
-| `/js` | Node.js 18+ and ESM-capable browser builds | Select a supported encoding and accept the all-encoding JavaScript payload. |
-| `/encodings/<encoding>` | Node.js 18+ and ESM-capable browser builds | Import only the required static encoding entry. |
-| `/workers/<encoding>` | Browsers with dedicated module-worker support | Await readiness, host or emit the matching worker asset, and always call `close()` when finished. |
-| exact-version static layout | ESM-capable browsers | Derive files from one packed version, verify SHA-384 values, and host factory/worker pairs together. |
+| package root | Node.js 18+ and ESM-capable browser builds; Chrome 151 release-qualified | Supply a deterministic descriptor and bundle the local tokenizer data. |
+| `/core` | Node.js 18+ and ESM-capable browser builds; Chrome 151 release-qualified | Compose application-owned contracts and selection without tokenizer code. |
+| `/js` | Node.js 18+ and ESM-capable browser builds; Chrome 151 release-qualified | Select a supported encoding and accept the all-encoding JavaScript payload. |
+| `/encodings/<encoding>` | Node.js 18+ and ESM-capable browser builds; Chrome 151 release-qualified | Import only the required static encoding entry. |
+| `/workers/<encoding>` | Dedicated module-worker browsers; Chrome 151 release-qualified | Await readiness, host or emit the matching worker asset, and always call `close()` when finished. |
+| exact-version static layout | ESM-capable browsers; Chrome 151 release-qualified | Derive files from one packed version, verify SHA-384 values, and host factory/worker pairs together. |
 
 The package owns deterministic local measurement and content-free public
 failures. Applications own input sanitization, worker lifetime, bundle and

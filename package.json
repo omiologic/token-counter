@@ -1,7 +1,6 @@
 {
   "name": "@omiologic/token-counter",
   "description": "Portable, local-first token measurement for JavaScript and TypeScript applications.",
-  "private": true,
   "type": "module",
   "sideEffects": false,
   "files": [
@@ -110,12 +109,16 @@
     "test": "npm run test:node && npm run test:browser && npm run test:cdn",
     "test:browser": "npm run build && npm run build:test-browser && node test/run-browser-tests.mjs",
     "test:cdn": "npm run build && node --test test/cdn-layout.test.mjs && node test/run-cdn-browser-tests.mjs",
+    "test:csp": "npm run build && node test/run-browser-csp-tests.mjs",
     "test:fuzz": "npm run build && node test/run-fuzz.mjs && npm run build:test-browser && node test/run-browser-tests.mjs",
     "test:fuzz:case": "npm run build && node test/run-fuzz-case.mjs",
     "test:fuzz:reference": "npm run build && node test/run-fuzz-reference.mjs",
-    "test:node": "npm run build && node --test test/bundle-analysis.test.mjs test/encoding-isolation.test.mjs test/fuzz.test.mjs test/isolated-bundles.test.mjs test/isolated-encodings.test.mjs test/js-tiktoken.test.mjs test/package-surface.test.mjs test/parity.test.mjs test/public-output.test.mjs test/registry.test.mjs test/worker-bundles.test.mjs",
+    "test:node": "npm run build && node --test test/browser-worker-races.test.mjs test/bundle-analysis.test.mjs test/encoding-isolation.test.mjs test/fuzz.test.mjs test/isolated-bundles.test.mjs test/isolated-encodings.test.mjs test/js-tiktoken.test.mjs test/package-surface.test.mjs test/parity.test.mjs test/public-output.test.mjs test/registry.test.mjs test/worker-bundles.test.mjs",
     "test:reproducibility": "node test/reproducible-package.mjs",
-    "typecheck": "tsc --project tsconfig.json --noEmit"
+    "test:stress": "npm run build && node test/evaluation/evaluate-stress.mjs",
+    "typecheck": "tsc --project tsconfig.json --noEmit",
+    "release:check": "npm run typecheck && npm test && npm run test:csp && npm run test:stress && npm run test:reproducibility && npm pack --dry-run",
+    "release": "npm publish --access public"
   },
   "dependencies": {
     "js-tiktoken": "1.0.21"
@@ -128,5 +131,6 @@
     "js-tiktoken": {
       "base64-js": "1.5.1"
     }
-  }
+  },
+  "version": "0.1.0-beta.1"
 }
