@@ -346,6 +346,12 @@ preflight estimate != provider-reported usage
 
 Applications should record both numeric values when useful and reconcile estimate error without persisting model-bound content.
 
+The reviewed known-answer corpus matches the pinned official Python reference.
+Deterministic privacy-safe fuzzing additionally shows that arbitrary generated
+JavaScript strings can expose tokenizer-runtime differences even when every
+JavaScript package surface agrees. Treat the opt-in fuzz-reference result as a
+qualification signal, not a reason to disclose or retain the generated input.
+
 ## Package shape
 
 ```text
@@ -389,6 +395,9 @@ npm test
 The committed suite covers:
 
 - deterministic known-answer token fixtures;
+- deterministic privacy-safe generated strings across root, full JavaScript,
+  isolated, and a bounded browser-worker subset, using seed/case replay without
+  retaining generated content;
 - Unicode, mixed-language, and pathological JavaScript-string fixtures,
   including exact lone-surrogate code-unit recipes and distinct normalization
   forms;
@@ -444,6 +453,20 @@ Reference provenance and reproduction instructions are recorded in [`test/fixtur
 ```sh
 /tmp/token-counter-reference/bin/python test/reference/verify_tiktoken.py
 ```
+
+Run the bounded generated-string surface matrix with:
+
+```sh
+npm run test:fuzz
+```
+
+The generator contract, default `0x5eedc0de` seed, budgets, safe one-case replay,
+and opt-in Python command are documented in the [fuzz harness](./test/fuzz/README.md).
+The reviewed 34-fixture corpus matches official `tiktoken==0.14.0`, but the
+deeper 192-case generated qualification currently detects 71 differences among
+1,152 comparisons with `js-tiktoken@1.0.21` and exits nonzero. This is retained
+release-readiness evidence that deterministic local adapter counts are not a
+universal Python-reference or provider-billing guarantee.
 
 Counting applies no package-owned Unicode normalization, rejection,
 sanitization, or repair. Precomposed and combining forms and lone UTF-16

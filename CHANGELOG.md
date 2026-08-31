@@ -39,6 +39,13 @@ release version, date, channel, registry, CDN provider, or deployment target.
   pinned official Python `tiktoken` reference. The pathological corpus covers
   exact lone-surrogate code units, normalization pairs, format controls, and
   representative transport-like inputs without package-owned normalization.
+- Added deterministic privacy-safe fuzzing across root, full JavaScript,
+  isolated, and bounded browser-worker surfaces. Seed/case replay and
+  content-free failure metadata expose generated semantic differences without
+  printing or retaining input or token arrays. The opt-in Python qualification
+  currently records arbitrary-string differences between the pinned JavaScript
+  adapter and official Python reference; reviewed fixture parity remains
+  unchanged.
 - Added browser-worker readiness, concurrency, lifecycle, close, payload
   isolation, offline-counting, and content-free failure checks. Closing a
   worker rejects pending and future counts without returning input text.

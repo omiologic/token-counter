@@ -3,6 +3,7 @@ import { resolveTokenEncoding } from "@omiologic/token-counter/core";
 import { JsTiktokenCounter } from "@omiologic/token-counter/js";
 import fixtureData from "./fixtures/token-counts.json";
 import { materializeFixture } from "./fixtures/materialize.mjs";
+import { runSyncFuzzParity } from "./fuzz/run-sync.mjs";
 
 const MAX_FIXTURE_BYTES = 64 * 1024;
 
@@ -34,6 +35,8 @@ export function runBrowserParity() {
       }
     }
   }
+
+  runSyncFuzzParity();
 
   const privateInput = "private-browser-input-marker";
   try {

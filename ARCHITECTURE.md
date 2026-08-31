@@ -416,6 +416,19 @@ Where practical, compare expected counts against a trusted reference implementat
 
 For OpenAI-compatible encodings, official `tiktoken` output is an appropriate reference oracle.
 
+Use two complementary layers. Reviewed known-answer fixtures establish stable
+expected behavior for named cases. A deterministic generated corpus probes
+combinations of UTF-16 code units, controls, whitespace, repetition, and
+high-entropy text. Generated failures must be reproducible from seed, case
+index, encoding, surface, lengths, and numeric counts without retaining or
+printing the string, token IDs, or a content fingerprint.
+
+Cross-surface JavaScript equality and Python-reference equality are distinct
+claims. A passing root/full/isolated/worker matrix proves adapter-surface
+consistency; it does not prove universal equivalence with another tokenizer
+runtime. The opt-in reference qualification should fail safely when it detects
+such a semantic difference and remain separate from the bounded ordinary suite.
+
 Fixture materialization must preserve exact caller-visible JavaScript code
 units. The package does not normalize, reject, sanitize, or define independent
 repair semantics for pathological strings; precomposed and combining forms

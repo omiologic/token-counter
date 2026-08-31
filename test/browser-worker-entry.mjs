@@ -7,6 +7,13 @@ import { createTokenCounter as createP50kEdit } from "@omiologic/token-counter/w
 import { createTokenCounter as createR50kBase } from "@omiologic/token-counter/workers/r50k_base";
 import fixtureData from "./fixtures/token-counts.json";
 import { materializeFixture } from "./fixtures/materialize.mjs";
+import {
+  DEFAULT_FUZZ_SEED,
+  WORKER_FUZZ_CASE_INDEXES,
+  generateFuzzCase,
+} from "./fuzz/generator.mjs";
+import { assertFuzzCount } from "./fuzz/safety.mjs";
+import { createSyncFuzzCounters } from "./fuzz/sync-surfaces.mjs";
 
 const FACTORIES = {
   cl100k_base: createCl100kBase,
@@ -75,6 +82,28 @@ export async function runBrowserWorkerVerification(checkpoint) {
       assert(Number.isSafeInteger(count));
       assert(count === fixture.expected[encoding]);
     });
+
+    const syncCounters = createSyncFuzzCounters(encoding);
+    for (const caseIndex of WORKER_FUZZ_CASE_INDEXES) {
+      const fuzzCase = generateFuzzCase(DEFAULT_FUZZ_SEED, caseIndex);
+      const expected = syncCounters[0][1].count(fuzzCase.text);
+      for (const [surface, syncCounter] of syncCounters) {
+        assertFuzzCount({
+          fuzzCase,
+          encoding,
+          surface,
+          expected,
+          actual: syncCounter.count(fuzzCase.text),
+        });
+      }
+      assertFuzzCount({
+        fuzzCase,
+        encoding,
+        surface: "worker",
+        expected,
+        actual: await counter.count(fuzzCase.text),
+      });
+    }
   }
 
   await expectRejection(

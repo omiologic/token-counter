@@ -110,7 +110,10 @@
     "test": "npm run test:node && npm run test:browser && npm run test:cdn",
     "test:browser": "npm run build && npm run build:test-browser && node test/run-browser-tests.mjs",
     "test:cdn": "npm run build && node --test test/cdn-layout.test.mjs && node test/run-cdn-browser-tests.mjs",
-    "test:node": "npm run build && node --test test/bundle-analysis.test.mjs test/encoding-isolation.test.mjs test/isolated-bundles.test.mjs test/isolated-encodings.test.mjs test/js-tiktoken.test.mjs test/package-surface.test.mjs test/parity.test.mjs test/public-output.test.mjs test/registry.test.mjs test/worker-bundles.test.mjs",
+    "test:fuzz": "npm run build && node test/run-fuzz.mjs && npm run build:test-browser && node test/run-browser-tests.mjs",
+    "test:fuzz:case": "npm run build && node test/run-fuzz-case.mjs",
+    "test:fuzz:reference": "npm run build && node test/run-fuzz-reference.mjs",
+    "test:node": "npm run build && node --test test/bundle-analysis.test.mjs test/encoding-isolation.test.mjs test/fuzz.test.mjs test/isolated-bundles.test.mjs test/isolated-encodings.test.mjs test/js-tiktoken.test.mjs test/package-surface.test.mjs test/parity.test.mjs test/public-output.test.mjs test/registry.test.mjs test/worker-bundles.test.mjs",
     "test:reproducibility": "node test/reproducible-package.mjs",
     "typecheck": "tsc --project tsconfig.json --noEmit"
   },
