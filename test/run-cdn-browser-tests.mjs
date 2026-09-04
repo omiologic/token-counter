@@ -242,7 +242,12 @@ try {
         const url = `${origin}/index.html?surface=${encodeURIComponent(subpath)}`;
         await runBrowser(browser, url, profile, outcome);
       } finally {
-        await rm(profile, { force: true, recursive: true });
+        await rm(profile, {
+          force: true,
+          recursive: true,
+          maxRetries: 10,
+          retryDelay: 100,
+        });
       }
     }
 
