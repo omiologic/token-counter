@@ -310,6 +310,23 @@ async function installConsumer(qualificationRoot, buildResult, label) {
     }, null, 2)}\n`,
     "utf8",
   );
+  // The consumer install stays --offline so the tarball is proven to install
+  // from its local file without the registry serving the package itself. Its
+  // runtime dependencies still have to resolve, and `npm ci` populates the
+  // cache from the lockfile without ever fetching their packuments, so a cold
+  // cache fails with ENOTCACHED. Warm the whole runtime closure from the
+  // lockfile, which pins the exact transitive versions this package installs.
+  const lockfile = JSON.parse(
+    await readFile(join(ROOT, "package-lock.json"), "utf8"),
+  );
+  const marker = "node_modules/";
+  for (const [path, entry] of Object.entries(lockfile.packages ?? {})) {
+    if (entry.dev === true || entry.version === undefined) continue;
+    const index = path.lastIndexOf(marker);
+    if (index === -1) continue;
+    const name = path.slice(index + marker.length);
+    await run("npm", ["cache", "add", `${name}@${entry.version}`], consumerRoot);
+  }
   await run(
     "npm",
     ["install", "--ignore-scripts", "--offline", "--no-audit", "--no-fund"],
