@@ -222,9 +222,23 @@ try {
   };
   process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
 } finally {
-  child?.kill("SIGKILL");
+  if (child !== undefined) {
+    child.kill("SIGKILL");
+    await new Promise((resolveExited) => {
+      if (child.exitCode !== null || child.signalCode !== null) {
+        resolveExited();
+      } else {
+        child.once("exit", resolveExited);
+      }
+    });
+  }
   server?.closeAllConnections();
   if (server) await new Promise((resolveClosed) => server.close(resolveClosed));
   await rm(siteRoot, { force: true, recursive: true });
-  await rm(profile, { force: true, recursive: true });
+  await rm(profile, {
+    force: true,
+    recursive: true,
+    maxRetries: 10,
+    retryDelay: 100,
+  });
 }
