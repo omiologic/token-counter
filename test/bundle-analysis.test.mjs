@@ -12,10 +12,7 @@ test("bundle analysis matches the committed isolation evidence", async () => {
       maxBuffer: 16 * 1024 * 1024,
     }),
     readFile(
-      new URL(
-        "../_notes/bundle-analysis/encoding-isolation.results.json",
-        import.meta.url,
-      ),
+      new URL("./fixtures/encoding-isolation.results.json", import.meta.url),
       "utf8",
     ),
   ]);

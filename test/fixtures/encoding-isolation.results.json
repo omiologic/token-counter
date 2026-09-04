@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "bundler": "esbuild@0.28.2",
+  "configuration": {
+    "bundle": true,
+    "format": "esm",
+    "minify": true,
+    "platform": "browser",
+    "target": "es2022",
+    "tree_shaking": true,
+    "gzip_level": 9
+  },
+  "measurements": [
+    {
+      "entry": "core",
+      "raw_bytes": 1067,
+      "gzip_bytes": 474,
+      "rank_modules": []
+    },
+    {
+      "entry": "lite-runtime",
+      "raw_bytes": 4414,
+      "gzip_bytes": 2135,
+      "rank_modules": []
+    },
+    {
+      "entry": "full-cl100k",
+      "raw_bytes": 5603350,
+      "gzip_bytes": 2559559,
+      "rank_modules": []
+    },
+    {
+      "entry": "isolated-cl100k",
+      "raw_bytes": 1095402,
+      "gzip_bytes": 503612,
+      "rank_modules": [
+        "cl100k_base.js"
+      ]
+    },
+    {
+      "entry": "isolated-o200k",
+      "raw_bytes": 2330022,
+      "gzip_bytes": 1135108,
+      "rank_modules": [
+        "o200k_base.js"
+      ]
+    },
+    {
+      "entry": "js",
+      "raw_bytes": 5604101,
+      "gzip_bytes": 2560021,
+      "rank_modules": []
+    },
+    {
+      "entry": "root",
+      "raw_bytes": 5605160,
+      "gzip_bytes": 2560455,
+      "rank_modules": []
+    }
+  ]
+}
