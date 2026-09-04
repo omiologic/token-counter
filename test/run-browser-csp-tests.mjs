@@ -152,6 +152,13 @@ async function runSuite(browser, siteRoot, suite) {
       }
     });
   });
+  const exited = new Promise((resolveExited) => {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      resolveExited();
+    } else {
+      child.once("exit", resolveExited);
+    }
+  });
   let timeoutId;
   try {
     const status = await Promise.race([
@@ -172,9 +179,15 @@ async function runSuite(browser, siteRoot, suite) {
   } finally {
     clearTimeout(timeoutId);
     child.kill("SIGKILL");
+    await exited;
     server.closeAllConnections();
     await new Promise((resolveClosed) => server.close(resolveClosed));
-    await rm(profile, { force: true, recursive: true });
+    await rm(profile, {
+      force: true,
+      recursive: true,
+      maxRetries: 10,
+      retryDelay: 100,
+    });
   }
 }
 

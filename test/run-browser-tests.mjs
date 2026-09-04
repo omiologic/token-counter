@@ -183,6 +183,13 @@ try {
 } finally {
   await new Promise((resolveClosed) => server.close(resolveClosed));
   await Promise.all(
-    profiles.map((profile) => rm(profile, { recursive: true, force: true })),
+    profiles.map((profile) =>
+      rm(profile, {
+        recursive: true,
+        force: true,
+        maxRetries: 10,
+        retryDelay: 100,
+      }),
+    ),
   );
 }
