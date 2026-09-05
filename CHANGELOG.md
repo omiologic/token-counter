@@ -3,7 +3,7 @@
 This file records user-visible package changes. An `Unreleased` entry does not
 select or authorize a release.
 
-## [Unreleased]
+## [0.1.0-beta.2] - 2026-09-05
 
 ### Documentation
 
