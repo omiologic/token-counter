@@ -3,6 +3,17 @@
 This file records user-visible package changes. An `Unreleased` entry does not
 select or authorize a release.
 
+## [Unreleased]
+
+### Documentation
+
+- Documented the consumer-side serialization gap in `README.md` and
+  `ARCHITECTURE.md`: counting the parts of a request is not the same as
+  counting the serialized request, the difference under-reports and scales with
+  the number of embedded values, and closing it is a consumer responsibility
+  because this package never observes request assembly. No API, behavior, or
+  dependency change.
+
 ## [0.1.0-beta.1] - 2026-09-04
 
 ### Added

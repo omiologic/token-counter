@@ -367,6 +367,39 @@ preflight estimate != provider-reported usage
 
 Applications should record both numeric values when useful and reconcile estimate error without persisting model-bound content.
 
+### Measure the request you send, not the strings you started with
+
+The gap above is the provider's half, and it is the one most consumers expect.
+There is a second gap that is entirely the application's own, and it is easy to
+miss because a correct tokenizer gives no hint of it.
+
+Counting the *parts* of a request is not the same as counting the *request*. An
+application that measures its prompt, its instructions, and each retrieved
+document as separate strings has not measured what it transmits, if what it
+transmits serializes those values into a structure:
+
+```text
+count(prompt) + count(instruction) + count(document)      <- what was measured
+count(JSON.stringify({ instruction, documents: [...] }))  <- what was sent
+```
+
+The second is larger, by the escaping, quoting, and keys the serializer adds.
+The difference scales with the number and size of the embedded values, so it
+stays invisible in small tests and grows in exactly the requests where a budget
+matters. It also under-reports, which is the dangerous direction: a preflight
+check that compares an estimate against a context window rejects when the
+estimate is too *high*, so an estimate that is too low fails open.
+
+A consumer measured a real request assembled this way and found its estimate
+short by 0.5% with one embedded document, 4.1% with two, and 8.3% with twelve.
+The tokenizer was correct in every case; the application was counting the wrong
+strings.
+
+The remedy is to build the exact payload first and count that, attributing
+per-part costs separately for observability where that is useful. This package
+cannot do it on a consumer's behalf: it never sees the request assembly, and it
+deliberately does not model provider request shapes.
+
 The reviewed known-answer corpus and deterministic privacy-safe arbitrary-
 string corpus match the pinned official Python reference. The adapter makes
 the pinned dependency's pre-tokenization whitespace semantics explicit so

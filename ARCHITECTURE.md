@@ -101,6 +101,28 @@ provider-reported usage
 
 The library does not own reconciliation policy, billing, or pricing tables.
 
+Request assembly is likewise a consumer responsibility, and the boundary has a
+sharp edge worth stating. Estimate error has two independent sources, and only
+one of them is the provider's:
+
+```text
+sum(count(part) for each part)   <- what a consumer typically measures
+count(serialized request)        <- what the consumer actually sends
+provider-reported usage          <- what the provider actually counts
+```
+
+The first gap is the consumer's own serialization: escaping, quoting, and keys
+introduced when parts are embedded into a structured payload. It is fully
+determined by code the consumer controls, is knowable before any call, and
+scales with the number and size of embedded values. The second gap is provider
+framing and accounting, which is not knowable locally.
+
+This library measures strings. It cannot close the first gap, because it never
+observes request assembly, and closing it would require modelling provider
+request shapes — which [the support boundary](#current-support-boundary)
+excludes. Consumers close it by counting the payload they built rather than the
+values they built it from.
+
 ## Boundaries
 
 ### Owned by `@omiologic/token-counter`
