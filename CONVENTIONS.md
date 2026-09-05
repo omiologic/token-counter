@@ -38,6 +38,7 @@ evidence stays in git-ignored `_notes/`; a decision record links to it rather
 than copying it.
 
 - [Post-release readiness — 0.1.0-beta.1](decisions/post-release-readiness-0-1-0-beta-1.md)
+- [Governance contract corrections](decisions/governance-merge-strategy-and-commit-style.md)
 
 ## Terminal output policy
 
