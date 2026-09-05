@@ -30,6 +30,15 @@ The matching pages in the adjacent `token-counter.wiki` repository are derivativ
 
 - [Keep feature notes small and useful](conventions/feature-documentation.md)
 
+## Governed decision records
+
+Records under `decisions/` capture decisions whose rationale has to survive in
+version control, so that superseding one produces a reviewable diff. Working
+evidence stays in git-ignored `_notes/`; a decision record links to it rather
+than copying it.
+
+- [Post-release readiness — 0.1.0-beta.1](decisions/post-release-readiness-0-1-0-beta-1.md)
+
 ## Terminal output policy
 
 Use RTK for human-facing exploratory commands:
